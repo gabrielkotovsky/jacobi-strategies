@@ -1,0 +1,6 @@
+**ASSUMPTIONS**
+MAR = min(RFR, 0)
+RFR = ...
+Benchmark is uploaded by user
+All returns are annual
+Weight matrices are always 2D 

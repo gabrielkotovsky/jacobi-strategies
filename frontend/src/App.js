@@ -1,166 +1,135 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line, ResponsiveContainer } from 'recharts';
+import './App.css';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF6B6B', '#4ECDC4', '#45B7D1'];
 
 function App() {
   const [portfolioValue, setPortfolioValue] = useState(100000);
   const [allocations, setAllocations] = useState([]);
-  const [assetNames, setAssetNames] = useState([]);
-  const [assetCategories, setAssetCategories] = useState({});
+  const [compoundingType, setCompoundingType] = useState('geometric');
   const [portfolioMetrics, setPortfolioMetrics] = useState(null);
   const [projectedValues, setProjectedValues] = useState(null);
+  const [assetMetrics, setAssetMetrics] = useState(null);
+  const [correlationMatrix, setCorrelationMatrix] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showAllocationsGrid, setShowAllocationsGrid] = useState(false);
+  const [activeTab, setActiveTab] = useState('allocation');
 
-  // Load asset names and categories on component mount
+  // Load asset data from CSV on component mount
   useEffect(() => {
     loadAssetData();
   }, []);
 
   const loadAssetData = async () => {
     try {
-      // In a real app, you'd get this from your API
-      // For now, we'll use placeholder data
-      const mockAssetNames = [
-        'Inflation-Protected Bond', 'EM Debt', 'Cash', 'US Small Cap', 'US Equity',
-        'International Equity', 'Emerging Markets', 'Real Estate', 'Commodities', 'TIPS',
-        'Corporate Bonds', 'Municipal Bonds', 'High Yield', 'Preferred Stock', 'Convertibles',
-        'Master Limited Partnerships', 'REITs', 'Infrastructure', 'Private Equity', 'Hedge Funds',
-        'Venture Capital', 'Angel Investing', 'Crowdfunding', 'Cryptocurrency', 'Gold'
+      // In a real app, you'd fetch this from your API
+      // For now, using the data from asset_categories.csv
+      const assetData = [
+        { name: 'Inflation-Protected Bond', category: 'Fixed Income' },
+        { name: 'EM Debt', category: 'Fixed Income' },
+        { name: 'Cash', category: 'Cash' },
+        { name: 'US Small Cap', category: 'Equity' },
+        { name: 'US Equity', category: 'Equity' },
+        { name: 'International Small Cap', category: 'Equity' },
+        { name: 'International Equity', category: 'Equity' },
+        { name: 'Global Equity', category: 'Equity' },
+        { name: 'Emerging Markets Equity', category: 'Equity' },
+        { name: 'Real Estate', category: 'Real Assets' },
+        { name: 'Ultrashort Bond', category: 'Fixed Income' },
+        { name: 'Intermediate Core Bond', category: 'Fixed Income' },
+        { name: 'Government Bond', category: 'Fixed Income' },
+        { name: 'Loans', category: 'Fixed Income' },
+        { name: 'Corporate Bond', category: 'Fixed Income' },
+        { name: 'High Yield Bond', category: 'Fixed Income' },
+        { name: 'Global Bonds', category: 'Fixed Income' },
+        { name: 'Hedge Funds', category: 'Alternatives' },
+        { name: 'Private Equity', category: 'Private Markets' },
+        { name: 'Muni', category: 'Fixed Income' },
+        { name: 'Commodities', category: 'Commodities' },
+        { name: 'Aust Equity', category: 'Equity' },
+        { name: 'Infrastructure', category: 'Real Assets' },
+        { name: 'Venture Capital', category: 'Private Markets' },
+        { name: 'Private Debt', category: 'Private Markets' }
       ];
-      
-      setAssetNames(mockAssetNames);
-      
-      // Initialize allocations with equal weights
-      const initialAllocations = mockAssetNames.map((name, index) => ({
+
+      // Initialize allocations with blank weights
+      const initialAllocations = assetData.map((asset, index) => ({
         id: index,
-        name: name,
-        weight: (100 / mockAssetNames.length).toFixed(2),
-        category: getAssetCategory(name)
+        name: asset.name,
+        category: asset.category,
+        weight: ''
       }));
-      
+
       setAllocations(initialAllocations);
-      
-      // Mock asset categories
-      const categories = {
-        'Inflation-Protected Bond': 'Fixed Income',
-        'EM Debt': 'Fixed Income',
-        'Cash': 'Cash & Equivalents',
-        'US Small Cap': 'Equity',
-        'US Equity': 'Equity',
-        'International Equity': 'Equity',
-        'Emerging Markets': 'Equity',
-        'Real Estate': 'Alternative',
-        'Commodities': 'Alternative',
-        'TIPS': 'Fixed Income',
-        'Corporate Bonds': 'Fixed Income',
-        'Municipal Bonds': 'Fixed Income',
-        'High Yield': 'Fixed Income',
-        'Preferred Stock': 'Equity',
-        'Convertibles': 'Hybrid',
-        'Master Limited Partnerships': 'Alternative',
-        'REITs': 'Alternative',
-        'Infrastructure': 'Alternative',
-        'Private Equity': 'Alternative',
-        'Hedge Funds': 'Alternative',
-        'Venture Capital': 'Alternative',
-        'Angel Investing': 'Alternative',
-        'Crowdfunding': 'Alternative',
-        'Cryptocurrency': 'Alternative',
-        'Gold': 'Alternative'
-      };
-      
-      setAssetCategories(categories);
+
+      // Create category mapping (stored locally for now)
+      const categories = {};
+      assetData.forEach(asset => {
+        categories[asset.name] = asset.category;
+      });
+
+      // Mock asset metrics data
+      setAssetMetrics(assetData.map(asset => ({
+        name: asset.name,
+        annualisedReturn: (Math.random() * 0.15 + 0.02).toFixed(4),
+        annualisedVolatility: (Math.random() * 0.25 + 0.05).toFixed(4)
+      })));
+
+      // Mock correlation matrix
+      const mockCorrelationMatrix = assetData.map(asset1 => 
+        assetData.map(asset2 => ({
+          asset1: asset1.name,
+          asset2: asset2.name,
+          correlation: asset1.name === asset2.name ? 1 : (Math.random() * 0.8 - 0.4).toFixed(3)
+        }))
+      ).flat();
+      setCorrelationMatrix(mockCorrelationMatrix);
+
     } catch (error) {
       console.error('Error loading asset data:', error);
     }
-  };
-
-  const getAssetCategory = (assetName) => {
-    const categories = {
-      'Inflation-Protected Bond': 'Fixed Income',
-      'EM Debt': 'Fixed Income',
-      'Cash': 'Cash & Equivalents',
-      'US Small Cap': 'Equity',
-      'US Equity': 'Equity',
-      'International Equity': 'Equity',
-      'Emerging Markets': 'Equity',
-      'Real Estate': 'Alternative',
-      'Commodities': 'Alternative',
-      'TIPS': 'Fixed Income',
-      'Corporate Bonds': 'Fixed Income',
-      'Municipal Bonds': 'Fixed Income',
-      'High Yield': 'Fixed Income',
-      'Preferred Stock': 'Equity',
-      'Convertibles': 'Hybrid',
-      'Master Limited Partnerships': 'Alternative',
-      'REITs': 'Alternative',
-      'Infrastructure': 'Alternative',
-      'Private Equity': 'Alternative',
-      'Hedge Funds': 'Alternative',
-      'Venture Capital': 'Alternative',
-      'Angel Investing': 'Alternative',
-      'Crowdfunding': 'Alternative',
-      'Cryptocurrency': 'Alternative',
-      'Gold': 'Alternative'
-    };
-    return categories[assetName] || 'Other';
   };
 
   const updateAllocation = (id, weight) => {
     setAllocations(prev => 
       prev.map(allocation => 
         allocation.id === id 
-          ? { ...allocation, weight: parseFloat(weight) }
+          ? { ...allocation, weight: parseFloat(weight) || 0 }
           : allocation
       )
     );
-  };
-
-  const addAsset = () => {
-    const newAsset = {
-      id: Date.now(),
-      name: 'New Asset',
-      weight: 0,
-      category: 'Other'
-    };
-    setAllocations(prev => [...prev, newAsset]);
-  };
-
-  const removeAsset = (id) => {
-    setAllocations(prev => prev.filter(allocation => allocation.id !== id));
   };
 
   const getTotalAllocation = () => {
     return allocations.reduce((sum, allocation) => sum + parseFloat(allocation.weight || 0), 0);
   };
 
+  const getCategoryAllocations = () => {
+    const categoryMap = {};
+    allocations.forEach(allocation => {
+      const category = allocation.category;
+      const weight = parseFloat(allocation.weight || 0);
+      categoryMap[category] = (categoryMap[category] || 0) + weight;
+    });
+    
+    return Object.entries(categoryMap).map(([category, weight]) => ({
+      category,
+      weight: parseFloat(weight.toFixed(2))
+    }));
+  };
+
   const calculatePortfolioMetrics = async () => {
     setLoading(true);
     try {
-      // In a real app, this would call your FastAPI endpoints
-      // For now, we'll simulate the API calls
-      
-      const portfolioData = {
-        allocations: allocations.map(a => ({ name: a.name, weight: parseFloat(a.weight) })),
-        portfolio_value: portfolioValue
-      };
-
-      // Simulate API calls to your FastAPI backend
-      // const response = await axios.post('http://localhost:8000/forecast_statistic/annualised_return', portfolioData);
-      
-      // Mock response for demonstration
+      // Mock API call - in real app this would call your FastAPI endpoints
       setTimeout(() => {
         setPortfolioMetrics({
-          annualised_return: 0.085,
-          annualised_volatility: 0.156,
-          sharpe_ratio: 0.544,
-          tracking_error: 0.023,
-          downside_deviation: 0.112,
-          value_at_risk: -0.089,
-          conditional_value_at_risk: -0.134,
-          maximum_drawdown: -0.234
+          annualisedVolatility: 0.156,
+          annualisedDownsideDeviation: 0.112,
+          valueAtRisk: -0.089,
+          conditionalValueAtRisk: -0.134,
+          maximumDrawdown: -0.234
         });
         
         // Mock projected values
@@ -181,217 +150,342 @@ function App() {
     }
   };
 
-  const getCategoryAllocations = () => {
-    const categoryMap = {};
-    allocations.forEach(allocation => {
-      const category = allocation.category;
-      const weight = parseFloat(allocation.weight || 0);
-      categoryMap[category] = (categoryMap[category] || 0) + weight;
-    });
-    
-    return Object.entries(categoryMap).map(([category, weight]) => ({
-      category,
-      weight
-    }));
-  };
-
   return (
-    <div className="container">
-      <h1>Portfolio Dashboard</h1>
+    <div className="dashboard">
+
       
-      {/* Portfolio Inputs */}
-      <div className="card">
-        <h2>Portfolio Configuration</h2>
-        
-        <div className="form-group">
-          <label>Starting Portfolio Value ($)</label>
-          <input
-            type="number"
-            value={portfolioValue}
-            onChange={(e) => setPortfolioValue(parseFloat(e.target.value))}
-            placeholder="100000"
-          />
-        </div>
-        
-        <div className="form-group">
-          <label>Asset Allocations (%)</label>
-          <div style={{ marginBottom: '10px' }}>
-            <strong>Total: {getTotalAllocation().toFixed(2)}%</strong>
-            {getTotalAllocation() !== 100 && (
-              <span style={{ color: 'red', marginLeft: '10px' }}>
-                {getTotalAllocation() > 100 ? 'Over-allocated' : 'Under-allocated'}
-              </span>
-            )}
-          </div>
-          
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Asset</th>
-                <th>Category</th>
-                <th>Weight (%)</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allocations.map(allocation => (
-                <tr key={allocation.id}>
-                  <td>{allocation.name}</td>
-                  <td>{allocation.category}</td>
-                  <td>
+      <div className="dashboard-container">
+        {/* Left Panel - 1/5 width */}
+        <div className="left-panel">
+          {!showAllocationsGrid ? (
+            <>
+              {/* Initial Portfolio Value Input */}
+              <div className="input-section">
+                <div className="input-group">
+                  <label>Portfolio Value ($)</label>
+                  <input
+                    type="number"
+                    value={portfolioValue}
+                    onChange={(e) => setPortfolioValue(parseFloat(e.target.value) || 0)}
+                    placeholder="100000"
+                    className="portfolio-input"
+                  />
+                </div>
+              </div>
+
+              {/* Asset Allocations Compact Button */}
+              <div className="allocations-compact">
+                <button 
+                  className="allocations-btn"
+                  onClick={() => setShowAllocationsGrid(true)}
+                >
+                  <div className="btn-content">
+                    <span className="btn-title">Asset Allocations</span>
+                    <span className="btn-total">Total: {getTotalAllocation().toFixed(2)}%</span>
+                    {getTotalAllocation() !== 100 && (
+                      <span className={`btn-status ${getTotalAllocation() > 100 ? 'over' : 'under'}`}>
+                        {getTotalAllocation() > 100 ? 'Over' : 'Under'}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              </div>
+
+              {/* Compounding Type Selector */}
+              <div className="compounding-section">
+                <h3>Compounding Method</h3>
+                <div className="compounding-options">
+                  <button
+                    className={`compounding-btn ${compoundingType === 'geometric' ? 'active' : ''}`}
+                    onClick={() => setCompoundingType('geometric')}
+                  >
+                    Geometric
+                  </button>
+                  <button
+                    className={`compounding-btn ${compoundingType === 'arithmetic' ? 'active' : ''}`}
+                    onClick={() => setCompoundingType('arithmetic')}
+                  >
+                    Arithmetic
+                  </button>
+                </div>
+              </div>
+
+              {/* Calculate Button */}
+              <button 
+                className="calculate-btn"
+                onClick={calculatePortfolioMetrics}
+                disabled={loading || getTotalAllocation() !== 100}
+              >
+                {loading ? 'Calculating...' : 'Calculate Portfolio'}
+              </button>
+            </>
+          ) : (
+            /* Full Screen Allocations View */
+            <div className="allocations-fullscreen">
+              <div className="fullscreen-header">
+                <button 
+                  className="close-btn"
+                  onClick={() => setShowAllocationsGrid(false)}
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="fullscreen-grid">
+                <div className="grid-header">
+                  <span>Asset</span>
+                  <span>Weight (%)</span>
+                </div>
+                {allocations.map(allocation => (
+                  <div key={allocation.id} className="allocation-row">
+                    <span className="asset-name">{allocation.name}</span>
                     <input
                       type="number"
                       value={allocation.weight}
                       onChange={(e) => updateAllocation(allocation.id, e.target.value)}
-                      style={{ width: '80px' }}
+                      className="weight-input"
                       step="0.01"
+                      min="0"
+                      max="100"
                     />
-                  </td>
-                  <td>
-                    <button 
-                      className="btn btn-danger" 
-                      onClick={() => removeAsset(allocation.id)}
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          
-          <button className="btn" onClick={addAsset}>
-            Add Asset
-          </button>
-          
-          <button 
-            className="btn" 
-            onClick={calculatePortfolioMetrics}
-            disabled={loading || getTotalAllocation() !== 100}
-            style={{ marginLeft: '10px' }}
-          >
-            {loading ? 'Calculating...' : 'Calculate Portfolio Metrics'}
-          </button>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Total Allocation Display */}
+              <div className="allocations-total">
+                <span>Total: <strong>{getTotalAllocation().toFixed(2)}%</strong></span>
+                {getTotalAllocation() !== 100 && (
+                  <span className={`weight-status ${getTotalAllocation() > 100 ? 'over' : 'under'}`}>
+                    {getTotalAllocation() > 100 ? 'Over-allocated' : 'Under-allocated'}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right Panel - 4/5 width */}
+        <div className="right-panel">
+          {/* Tabs */}
+          <div className="tabs-container">
+            <button 
+              className={`tab ${activeTab === 'allocation' ? 'active' : ''}`}
+              onClick={() => setActiveTab('allocation')}
+            >
+              Allocation
+            </button>
+            <button 
+              className={`tab ${activeTab === 'projected-value' ? 'active' : ''}`}
+              onClick={() => setActiveTab('projected-value')}
+            >
+              Projected Value
+            </button>
+            <button 
+              className={`tab ${activeTab === 'performance-risk' ? 'active' : ''}`}
+              onClick={() => setActiveTab('performance-risk')}
+            >
+              Performance & Risk
+            </button>
+            <button 
+              className={`tab ${activeTab === 'asset-metrics' ? 'active' : ''}`}
+              onClick={() => setActiveTab('asset-metrics')}
+            >
+              Asset Metrics
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="tab-content">
+            {/* Allocation Tab */}
+            {activeTab === 'allocation' && (
+              <div className="allocation-charts">
+                {/* Pie Chart - Individual Assets */}
+                <div className="chart-container">
+                  <h3>Individual Asset Allocation</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={allocations.filter(a => parseFloat(a.weight) > 0)}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="weight"
+                      >
+                        {allocations.filter(a => parseFloat(a.weight) > 0).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Bar Chart - Asset Categories */}
+                <div className="chart-container">
+                  <h3>Asset Category Allocation</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={getCategoryAllocations()}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="category" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="weight" fill="#8884d8" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Projected Value Tab */}
+            {activeTab === 'projected-value' && (
+              <div className="projected-chart">
+                <h3>Projected Portfolio Values</h3>
+                {projectedValues ? (
+                  <ResponsiveContainer width="100%" height={400}>
+                    <LineChart data={projectedValues}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="year" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="p1" stroke="#FF0000" name="1st Percentile" />
+                      <Line type="monotone" dataKey="p5" stroke="#FF6600" name="5th Percentile" />
+                      <Line type="monotone" dataKey="p25" stroke="#FFCC00" name="25th Percentile" />
+                      <Line type="monotone" dataKey="p50" stroke="#00CC00" name="50th Percentile" />
+                      <Line type="monotone" dataKey="p75" stroke="#0066FF" name="75th Percentile" />
+                      <Line type="monotone" dataKey="p95" stroke="#6600FF" name="95th Percentile" />
+                      <Line type="monotone" dataKey="p99" stroke="#CC00FF" name="99th Percentile" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="no-data-message">
+                    <p>Click "Calculate Portfolio" to see projected values</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Performance & Risk Tab */}
+            {activeTab === 'performance-risk' && (
+              <div className="metrics-section">
+                <h3>Portfolio Performance & Risk Metrics</h3>
+                {portfolioMetrics ? (
+                  <div className="metrics-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Metric</th>
+                          <th>Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>Annualised Volatility</td>
+                          <td>{(portfolioMetrics.annualisedVolatility * 100).toFixed(2)}%</td>
+                        </tr>
+                        <tr>
+                          <td>Annualised Downside Deviation</td>
+                          <td>{(portfolioMetrics.annualisedDownsideDeviation * 100).toFixed(2)}%</td>
+                        </tr>
+                        <tr>
+                          <td>5% Value at Risk (VaR)</td>
+                          <td>{(portfolioMetrics.valueAtRisk * 100).toFixed(2)}%</td>
+                        </tr>
+                        <tr>
+                          <td>5% Conditional VaR (CVaR)</td>
+                          <td>{(portfolioMetrics.conditionalValueAtRisk * 100).toFixed(2)}%</td>
+                        </tr>
+                        <tr>
+                          <td>Maximum Drawdown</td>
+                          <td>{(portfolioMetrics.maximumDrawdown * 100).toFixed(2)}%</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="no-data-message">
+                    <p>Click "Calculate Portfolio" to see performance metrics</p>
+                  </div>
+                  )}
+              </div>
+            )}
+
+            {/* Asset Metrics Tab */}
+            {activeTab === 'asset-metrics' && (
+              <div className="asset-metrics-section">
+                {assetMetrics ? (
+                  <div className="metrics-row">
+                    {/* Asset Returns & Volatility */}
+                    <div className="asset-metrics-table">
+                      <h3>Asset Returns & Volatility</h3>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Asset</th>
+                            <th>Annualised Return</th>
+                            <th>Annualised Volatility</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {assetMetrics.map((asset, index) => (
+                            <tr key={index}>
+                              <td>{asset.name}</td>
+                              <td>{(parseFloat(asset.annualisedReturn) * 100).toFixed(2)}%</td>
+                              <td>{(parseFloat(asset.annualisedVolatility) * 100).toFixed(2)}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Correlation Matrix */}
+                    <div className="correlation-matrix">
+                      <h3>Asset Correlation Matrix</h3>
+                      <div className="matrix-container">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th></th>
+                              {allocations.slice(0, 8).map(asset => (
+                                <th key={asset.id}>{asset.name.substring(0, 8)}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {allocations.slice(0, 8).map((asset1, i) => (
+                              <tr key={asset1.id}>
+                                <td>{asset1.name.substring(0, 8)}</td>
+                                {allocations.slice(0, 8).map((asset2, j) => {
+                                  const correlation = correlationMatrix?.find(
+                                    corr => corr.asset1 === asset1.name && corr.asset2 === asset2.name
+                                  )?.correlation || (i === j ? '1.000' : '0.000');
+                                  return (
+                                    <td key={asset2.id} className={`correlation-cell ${parseFloat(correlation) > 0.5 ? 'high' : parseFloat(correlation) < -0.5 ? 'low' : 'medium'}`}>
+                                      {correlation}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="no-data-message">
+                    <p>Asset metrics will be available after calculation</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* Allocation Charts */}
-      <div className="card">
-        <h2>Portfolio Allocations</h2>
-        
-        <div style={{ display: 'flex', gap: '20px' }}>
-          {/* Individual Asset Pie Chart */}
-          <div style={{ flex: 1 }}>
-            <h3>Individual Assets</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={allocations.filter(a => parseFloat(a.weight) > 0)}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="weight"
-                >
-                  {allocations.filter(a => parseFloat(a.weight) > 0).map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          
-          {/* Category Bar Chart */}
-          <div style={{ flex: 1 }}>
-            <h3>By Asset Category</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={getCategoryAllocations()}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="category" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="weight" fill="#8884d8" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* Portfolio Metrics */}
-      {portfolioMetrics && (
-        <div className="card">
-          <h2>Portfolio Metrics</h2>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Metric</th>
-                <th>Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Annualised Return</td>
-                <td>{(portfolioMetrics.annualised_return * 100).toFixed(2)}%</td>
-              </tr>
-              <tr>
-                <td>Annualised Volatility</td>
-                <td>{(portfolioMetrics.annualised_volatility * 100).toFixed(2)}%</td>
-              </tr>
-              <tr>
-                <td>Sharpe Ratio</td>
-                <td>{portfolioMetrics.sharpe_ratio.toFixed(3)}</td>
-              </tr>
-              <tr>
-                <td>Tracking Error</td>
-                <td>{(portfolioMetrics.tracking_error * 100).toFixed(2)}%</td>
-              </tr>
-              <tr>
-                <td>Downside Deviation</td>
-                <td>{(portfolioMetrics.downside_deviation * 100).toFixed(2)}%</td>
-              </tr>
-              <tr>
-                <td>5% Value at Risk</td>
-                <td>{(portfolioMetrics.value_at_risk * 100).toFixed(2)}%</td>
-              </tr>
-              <tr>
-                <td>5% Conditional VaR</td>
-                <td>{(portfolioMetrics.conditional_value_at_risk * 100).toFixed(2)}%</td>
-              </tr>
-              <tr>
-                <td>Maximum Drawdown</td>
-                <td>{(portfolioMetrics.maximum_drawdown * 100).toFixed(2)}%</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Projected Portfolio Values */}
-      {projectedValues && (
-        <div className="card">
-          <h2>Projected Portfolio Values</h2>
-          <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={projectedValues}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="year" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="p1" stroke="#FF0000" name="1st Percentile" />
-              <Line type="monotone" dataKey="p5" stroke="#FF6600" name="5th Percentile" />
-              <Line type="monotone" dataKey="p25" stroke="#FFCC00" name="25th Percentile" />
-              <Line type="monotone" dataKey="p50" stroke="#00CC00" name="50th Percentile" />
-              <Line type="monotone" dataKey="p75" stroke="#0066FF" name="75th Percentile" />
-              <Line type="monotone" dataKey="p95" stroke="#6600FF" name="95th Percentile" />
-              <Line type="monotone" dataKey="p99" stroke="#CC00FF" name="99th Percentile" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
     </div>
   );
 }
