@@ -7,7 +7,6 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'
 function App() {
   const [portfolioValue, setPortfolioValue] = useState(100000);
   const [allocations, setAllocations] = useState([]);
-  const [compoundingType, setCompoundingType] = useState('geometric');
   const [portfolioMetrics, setPortfolioMetrics] = useState(null);
   const [projectedValues, setProjectedValues] = useState(null);
   const [assetMetrics, setAssetMetrics] = useState(null);
@@ -15,17 +14,65 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [showAllocationsGrid, setShowAllocationsGrid] = useState(false);
   const [activeTab, setActiveTab] = useState('allocation');
+  const [assetsLoading, setAssetsLoading] = useState(true);
+  const [assetsError, setAssetsError] = useState(null);
 
-  // Load asset data from CSV on component mount
+  // Load asset data from backend API on component mount
   useEffect(() => {
     loadAssetData();
   }, []);
 
   const loadAssetData = async () => {
+    setAssetsLoading(true);
+    setAssetsError(null);
+    
     try {
-      // In a real app, you'd fetch this from your API
-      // For now, using the data from asset_categories.csv
-      const assetData = [
+      // Fetch asset data from backend API
+      const response = await fetch('http://localhost:8000/forecast_statistic/assets');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Initialize allocations with blank weights and selected state
+      const initialAllocations = data.assets.map((asset, index) => ({
+        id: asset.id,
+        name: asset.name,
+        category: asset.category,
+        weight: '',
+        selected: true // Default all assets to selected
+      }));
+
+      setAllocations(initialAllocations);
+
+      // Mock asset metrics data (in real app, this would come from backend)
+      setAssetMetrics(data.assets.map(asset => ({
+        name: asset.name,
+        annualisedReturn: (Math.random() * 0.15 + 0.02).toFixed(4),
+        annualisedVolatility: (Math.random() * 0.25 + 0.05).toFixed(4)
+      })));
+
+      // Mock correlation matrix (in real app, this would come from backend)
+      const mockCorrelationMatrix = data.assets.map(asset1 => 
+        data.assets.map(asset2 => ({
+          asset1: asset1.name,
+          asset2: asset2.name,
+          correlation: asset1.name === asset2.name ? 1 : (Math.random() * 0.8 - 0.4).toFixed(3)
+        }))
+      ).flat();
+      setCorrelationMatrix(mockCorrelationMatrix);
+
+      setAssetsLoading(false);
+      
+    } catch (error) {
+      console.error('Error loading asset data:', error);
+      setAssetsError(error.message);
+      setAssetsLoading(false);
+      
+      // Fallback to hardcoded data if API fails
+      const fallbackAssetData = [
         { name: 'Inflation-Protected Bond', category: 'Fixed Income' },
         { name: 'EM Debt', category: 'Fixed Income' },
         { name: 'Cash', category: 'Cash' },
@@ -53,41 +100,15 @@ function App() {
         { name: 'Private Debt', category: 'Private Markets' }
       ];
 
-      // Initialize allocations with blank weights
-      const initialAllocations = assetData.map((asset, index) => ({
+      const fallbackAllocations = fallbackAssetData.map((asset, index) => ({
         id: index,
         name: asset.name,
         category: asset.category,
-        weight: ''
+        weight: '',
+        selected: true
       }));
 
-      setAllocations(initialAllocations);
-
-      // Create category mapping (stored locally for now)
-      const categories = {};
-      assetData.forEach(asset => {
-        categories[asset.name] = asset.category;
-      });
-
-      // Mock asset metrics data
-      setAssetMetrics(assetData.map(asset => ({
-        name: asset.name,
-        annualisedReturn: (Math.random() * 0.15 + 0.02).toFixed(4),
-        annualisedVolatility: (Math.random() * 0.25 + 0.05).toFixed(4)
-      })));
-
-      // Mock correlation matrix
-      const mockCorrelationMatrix = assetData.map(asset1 => 
-        assetData.map(asset2 => ({
-          asset1: asset1.name,
-          asset2: asset2.name,
-          correlation: asset1.name === asset2.name ? 1 : (Math.random() * 0.8 - 0.4).toFixed(3)
-        }))
-      ).flat();
-      setCorrelationMatrix(mockCorrelationMatrix);
-
-    } catch (error) {
-      console.error('Error loading asset data:', error);
+      setAllocations(fallbackAllocations);
     }
   };
 
@@ -101,13 +122,39 @@ function App() {
     );
   };
 
+  const toggleAssetSelection = (id) => {
+    setAllocations(prev => 
+      prev.map(allocation => 
+        allocation.id === id 
+          ? { ...allocation, selected: !allocation.selected, weight: !allocation.selected ? allocation.weight : '' }
+          : allocation
+      )
+    );
+  };
+
+  const selectAllAssets = () => {
+    setAllocations(prev => 
+      prev.map(allocation => ({ ...allocation, selected: true }))
+    );
+  };
+
+  const deselectAllAssets = () => {
+    setAllocations(prev => 
+      prev.map(allocation => ({ ...allocation, selected: false, weight: '' }))
+    );
+  };
+
+  const getSelectedAllocations = () => {
+    return allocations.filter(allocation => allocation.selected);
+  };
+
   const getTotalAllocation = () => {
-    return allocations.reduce((sum, allocation) => sum + parseFloat(allocation.weight || 0), 0);
+    return getSelectedAllocations().reduce((sum, allocation) => sum + parseFloat(allocation.weight || 0), 0);
   };
 
   const getCategoryAllocations = () => {
     const categoryMap = {};
-    allocations.forEach(allocation => {
+    getSelectedAllocations().forEach(allocation => {
       const category = allocation.category;
       const weight = parseFloat(allocation.weight || 0);
       categoryMap[category] = (categoryMap[category] || 0) + weight;
@@ -175,46 +222,42 @@ function App() {
 
               {/* Asset Allocations Compact Button */}
               <div className="allocations-compact">
-                <button 
-                  className="allocations-btn"
-                  onClick={() => setShowAllocationsGrid(true)}
-                >
-                  <div className="btn-content">
-                    <span className="btn-title">Asset Allocations</span>
-                    <span className="btn-total">Total: {getTotalAllocation().toFixed(2)}%</span>
-                    {getTotalAllocation() !== 100 && (
-                      <span className={`btn-status ${getTotalAllocation() > 100 ? 'over' : 'under'}`}>
-                        {getTotalAllocation() > 100 ? 'Over' : 'Under'}
-                      </span>
-                    )}
+                {assetsLoading ? (
+                  <div className="loading-assets">
+                    <div className="loading-spinner"></div>
+                    <span>Loading assets...</span>
                   </div>
-                </button>
+                ) : assetsError ? (
+                  <div className="assets-error">
+                    <span>⚠️ Error loading assets</span>
+                    <button onClick={loadAssetData} className="retry-btn">Retry</button>
+                  </div>
+                ) : (
+                  <button 
+                    className="allocations-btn"
+                    onClick={() => setShowAllocationsGrid(true)}
+                  >
+                    <div className="btn-content">
+                      <span className="btn-title">Asset Allocations</span>
+                      <span className="btn-total">Total: {getTotalAllocation().toFixed(2)}%</span>
+                      <span className="btn-selected">Selected: {getSelectedAllocations().length}/{allocations.length}</span>
+                      {getTotalAllocation() !== 100 && (
+                        <span className={`btn-status ${getTotalAllocation() > 100 ? 'over' : 'under'}`}>
+                          {getTotalAllocation() > 100 ? 'Over' : 'Under'}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                )}
               </div>
 
-              {/* Compounding Type Selector */}
-              <div className="compounding-section">
-                <h3>Compounding Method</h3>
-                <div className="compounding-options">
-                  <button
-                    className={`compounding-btn ${compoundingType === 'geometric' ? 'active' : ''}`}
-                    onClick={() => setCompoundingType('geometric')}
-                  >
-                    Geometric
-                  </button>
-                  <button
-                    className={`compounding-btn ${compoundingType === 'arithmetic' ? 'active' : ''}`}
-                    onClick={() => setCompoundingType('arithmetic')}
-                  >
-                    Arithmetic
-                  </button>
-                </div>
-              </div>
+
 
               {/* Calculate Button */}
               <button 
                 className="calculate-btn"
                 onClick={calculatePortfolioMetrics}
-                disabled={loading || getTotalAllocation() !== 100}
+                disabled={loading || getTotalAllocation() !== 100 || getSelectedAllocations().length === 0}
               >
                 {loading ? 'Calculating...' : 'Calculate Portfolio'}
               </button>
@@ -229,16 +272,29 @@ function App() {
                 >
                   ×
                 </button>
+                <div className="selection-controls">
+                  <button onClick={selectAllAssets} className="select-all-btn">Select All</button>
+                  <button onClick={deselectAllAssets} className="deselect-all-btn">Deselect All</button>
+                </div>
               </div>
               
               <div className="fullscreen-grid">
                 <div className="grid-header">
+                  <span>Select</span>
                   <span>Asset</span>
+                  <span>Type</span>
                   <span>Weight (%)</span>
                 </div>
                 {allocations.map(allocation => (
-                  <div key={allocation.id} className="allocation-row">
+                  <div key={allocation.id} className={`allocation-row ${!allocation.selected ? 'deselected' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={allocation.selected}
+                      onChange={() => toggleAssetSelection(allocation.id)}
+                      className="asset-checkbox"
+                    />
                     <span className="asset-name">{allocation.name}</span>
+                    <span className="asset-category">{allocation.category}</span>
                     <input
                       type="number"
                       value={allocation.weight}
@@ -247,6 +303,7 @@ function App() {
                       step="0.01"
                       min="0"
                       max="100"
+                      disabled={!allocation.selected}
                     />
                   </div>
                 ))}
@@ -254,6 +311,7 @@ function App() {
               
               {/* Total Allocation Display */}
               <div className="allocations-total">
+                <span>Selected Assets: <strong>{getSelectedAllocations().length}</strong></span>
                 <span>Total: <strong>{getTotalAllocation().toFixed(2)}%</strong></span>
                 {getTotalAllocation() !== 100 && (
                   <span className={`weight-status ${getTotalAllocation() > 100 ? 'over' : 'under'}`}>
@@ -303,39 +361,51 @@ function App() {
                 {/* Pie Chart - Individual Assets */}
                 <div className="chart-container">
                   <h3>Individual Asset Allocation</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={allocations.filter(a => parseFloat(a.weight) > 0)}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="weight"
-                      >
-                        {allocations.filter(a => parseFloat(a.weight) > 0).map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  {getSelectedAllocations().filter(a => parseFloat(a.weight) > 0).length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={getSelectedAllocations().filter(a => parseFloat(a.weight) > 0)}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="weight"
+                        >
+                          {getSelectedAllocations().filter(a => parseFloat(a.weight) > 0).map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="no-data-message">
+                      <p>No selected assets with weights assigned</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Bar Chart - Asset Categories */}
                 <div className="chart-container">
                   <h3>Asset Category Allocation</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={getCategoryAllocations()}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="category" />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="weight" fill="#8884d8" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {getCategoryAllocations().length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={getCategoryAllocations()}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="category" />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="weight" fill="#8884d8" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="no-data-message">
+                      <p>No selected assets with weights assigned</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -431,7 +501,9 @@ function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {assetMetrics.map((asset, index) => (
+                          {assetMetrics.filter(asset => 
+                            allocations.find(a => a.name === asset.name && a.selected)
+                          ).map((asset, index) => (
                             <tr key={index}>
                               <td>{asset.name}</td>
                               <td>{(parseFloat(asset.annualisedReturn) * 100).toFixed(2)}%</td>
@@ -450,16 +522,16 @@ function App() {
                           <thead>
                             <tr>
                               <th></th>
-                              {allocations.slice(0, 8).map(asset => (
+                              {getSelectedAllocations().slice(0, 8).map(asset => (
                                 <th key={asset.id}>{asset.name.substring(0, 8)}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
-                            {allocations.slice(0, 8).map((asset1, i) => (
+                            {getSelectedAllocations().slice(0, 8).map((asset1, i) => (
                               <tr key={asset1.id}>
                                 <td>{asset1.name.substring(0, 8)}</td>
-                                {allocations.slice(0, 8).map((asset2, j) => {
+                                {getSelectedAllocations().slice(0, 8).map((asset2, j) => {
                                   const correlation = correlationMatrix?.find(
                                     corr => corr.asset1 === asset1.name && corr.asset2 === asset2.name
                                   )?.correlation || (i === j ? '1.000' : '0.000');
