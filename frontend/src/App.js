@@ -16,11 +16,44 @@ function App() {
   const [activeTab, setActiveTab] = useState('allocation');
   const [assetsLoading, setAssetsLoading] = useState(true);
   const [assetsError, setAssetsError] = useState(null);
+  
+  // New input field states
+  const [riskFreeRate, setRiskFreeRate] = useState(0.02);
+  const [mar, setMar] = useState(0.0);
+  const [aggregation, setAggregation] = useState('mean');
+  const [varMethod, setVarMethod] = useState('pooled'); // Default to pooled distribution
+  const [rebalance, setRebalance] = useState('periodic'); // Default to periodic rebalancing
 
   // Load asset data from backend API on component mount
   useEffect(() => {
     loadAssetData();
   }, []);
+
+  // Auto-calculate portfolio metrics when weights or parameters change
+  useEffect(() => {
+    // Only calculate if we have valid parameters and allocations
+    if (
+      allocations && allocations.length > 0 &&
+      getSelectedAllocations().length > 0 &&
+      validateWeightsForAPI() && // Use new validation function
+      validateRiskFreeRate(riskFreeRate) &&
+      validateMar(mar)
+    ) {
+      // Add a small delay to avoid excessive calculations while typing
+      const timeoutId = setTimeout(() => {
+        calculatePortfolioMetrics();
+      }, 500);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [riskFreeRate, mar, aggregation, varMethod, rebalance, portfolioValue, allocations]);
+
+  // Auto-calculate asset metrics when Asset Metrics or Asset Correlation tab is active
+  useEffect(() => {
+    if ((activeTab === 'asset-metrics' || activeTab === 'asset-correlation') && allocations && allocations.length > 0) {
+      calculateAssetMetrics();
+    }
+  }, [activeTab, allocations, aggregation]);
 
   const loadAssetData = async () => {
     setAssetsLoading(true);
@@ -36,33 +69,22 @@ function App() {
       
       const data = await response.json();
       
-      // Initialize allocations with blank weights and selected state
+      // Initialize allocations with blank weights and deselected state
+      // IMPORTANT: Keep original order from backend (sorted alphabetically)
       const initialAllocations = data.assets.map((asset, index) => ({
         id: asset.id,
         name: asset.name,
         category: asset.category,
         weight: '',
-        selected: true // Default all assets to selected
+        selected: false, // Default all assets to deselected
+        originalIndex: asset.id // Store the original backend index
       }));
 
       setAllocations(initialAllocations);
 
-      // Mock asset metrics data (in real app, this would come from backend)
-      setAssetMetrics(data.assets.map(asset => ({
-        name: asset.name,
-        annualisedReturn: (Math.random() * 0.15 + 0.02).toFixed(4),
-        annualisedVolatility: (Math.random() * 0.25 + 0.05).toFixed(4)
-      })));
-
-      // Mock correlation matrix (in real app, this would come from backend)
-      const mockCorrelationMatrix = data.assets.map(asset1 => 
-        data.assets.map(asset2 => ({
-          asset1: asset1.name,
-          asset2: asset2.name,
-          correlation: asset1.name === asset2.name ? 1 : (Math.random() * 0.8 - 0.4).toFixed(3)
-        }))
-      ).flat();
-      setCorrelationMatrix(mockCorrelationMatrix);
+      // Initialize empty asset metrics (will be calculated when needed)
+      setAssetMetrics([]);
+      setCorrelationMatrix([]);
 
       setAssetsLoading(false);
       
@@ -105,7 +127,8 @@ function App() {
         name: asset.name,
         category: asset.category,
         weight: '',
-        selected: true
+        selected: false,
+        originalIndex: index // Store the original index for fallback data
       }));
 
       setAllocations(fallbackAllocations);
@@ -120,6 +143,10 @@ function App() {
           : allocation
       )
     );
+    
+    // Clear existing portfolio metrics when weights change
+    setPortfolioMetrics(null);
+    setProjectedValues(null);
   };
 
   const toggleAssetSelection = (id) => {
@@ -130,6 +157,10 @@ function App() {
           : allocation
       )
     );
+    
+    // Clear existing portfolio metrics when asset selection changes
+    setPortfolioMetrics(null);
+    setProjectedValues(null);
   };
 
   const selectAllAssets = () => {
@@ -145,16 +176,29 @@ function App() {
   };
 
   const getSelectedAllocations = () => {
+    // Safety check: return empty array if allocations is not available
+    if (!allocations || allocations.length === 0) {
+      return [];
+    }
     return allocations.filter(allocation => allocation.selected);
   };
 
   const getTotalAllocation = () => {
-    return getSelectedAllocations().reduce((sum, allocation) => sum + parseFloat(allocation.weight || 0), 0);
+    const selectedAllocations = getSelectedAllocations();
+    if (selectedAllocations.length === 0) {
+      return 0;
+    }
+    return selectedAllocations.reduce((sum, allocation) => sum + parseFloat(allocation.weight || 0), 0);
   };
 
   const getCategoryAllocations = () => {
+    const selectedAllocations = getSelectedAllocations();
+    if (selectedAllocations.length === 0) {
+      return [];
+    }
+    
     const categoryMap = {};
-    getSelectedAllocations().forEach(allocation => {
+    selectedAllocations.forEach(allocation => {
       const category = allocation.category;
       const weight = parseFloat(allocation.weight || 0);
       categoryMap[category] = (categoryMap[category] || 0) + weight;
@@ -166,30 +210,308 @@ function App() {
     }));
   };
 
+  // Validation functions for new input fields
+  const validateRiskFreeRate = (value) => {
+    const num = parseFloat(value);
+    return !isNaN(num) && num >= 0 && num <= 1;
+  };
+
+  const validateMar = (value) => {
+    const num = parseFloat(value);
+    return !isNaN(num) && num >= -1 && num <= 1;
+  };
+
+
+
+  const getInputError = (field) => {
+    switch (field) {
+      case 'riskFreeRate':
+        return !validateRiskFreeRate(riskFreeRate) ? 'Must be between 0% and 100%' : '';
+      case 'mar':
+        return !validateMar(mar) ? 'Must be between -100% and 100%' : '';
+
+      default:
+        return '';
+    }
+  };
+
+  // Get current parameter values for calculations
+  const getCurrentParameters = () => {
+    return {
+      riskFreeRate,
+      mar,
+      aggregation,
+      varMethod,
+      rebalance
+    };
+  };
+
+  // Formatting functions for graph display
+  const formatYAxisLabel = (value) => {
+    if (value >= 1e9) {
+      return `${(value / 1e9).toFixed(1)}B`;
+    } else if (value >= 1e6) {
+      return `${(value / 1e6).toFixed(1)}M`;
+    } else if (value >= 1e3) {
+      return `${(value / 1e3).toFixed(1)}k`;
+    } else {
+      return value.toFixed(1);
+    }
+  };
+
+  const formatTooltipValue = (value) => {
+    return `$${Math.round(value).toLocaleString()}`;
+  };
+
+  // Calculate upside percentage relative to initial portfolio value
+  const calculateUpside = (value) => {
+    if (!portfolioValue || portfolioValue === 0) return 0;
+    const upside = ((value - portfolioValue) / portfolioValue) * 100;
+    return upside;
+  };
+
+  // Format upside percentage for display
+  const formatUpside = (upside) => {
+    if (upside >= 0) {
+      return `+${upside.toFixed(1)}%`;
+    } else {
+      return `${upside.toFixed(1)}%`;
+    }
+  };
+
+  // Generate evenly spaced Y-axis ticks
+  const generateYTicks = () => {
+    if (!projectedValues || projectedValues.length === 0) return [];
+    
+    // Find the maximum value across all percentiles and years
+    const maxValue = Math.max(...projectedValues.flatMap(year => 
+      Object.keys(year).filter(key => key.startsWith('p')).map(key => year[key])
+    ));
+    
+    // Generate 10 evenly spaced ticks from 0 to maxValue
+    const ticks = [];
+    for (let i = 0; i <= 10; i++) {
+      ticks.push(Math.round((maxValue * i) / 10));
+    }
+    
+    return ticks;
+  };
+
+  // Build weights array in the correct order for backend API calls
+  const buildWeightsArray = () => {
+    // Safety check: return empty array if no allocations
+    if (!allocations || allocations.length === 0) {
+      return [];
+    }
+    
+    // Get the maximum original index to determine array size
+    const maxIndex = Math.max(...allocations.map(a => a.originalIndex));
+    
+    // Safety check: ensure maxIndex is valid
+    if (maxIndex < 0 || !Number.isFinite(maxIndex)) {
+      console.warn('Invalid maxIndex:', maxIndex, 'allocations:', allocations);
+      return [];
+    }
+    
+    // Create array with correct size, initialized to 0
+    const weightsArray = new Array(maxIndex + 1).fill(0);
+    
+    // Fill in weights for selected assets at their correct indices
+    getSelectedAllocations().forEach(allocation => {
+      if (allocation.selected && allocation.weight !== '') {
+        // Convert percentage to decimal (e.g., 4.0% -> 0.04)
+        const weight = parseFloat(allocation.weight) / 100;
+        weightsArray[allocation.originalIndex] = weight;
+      }
+    });
+    
+    return weightsArray;
+  };
+
+  // Validate that weights array is ready for API calls
+  const validateWeightsForAPI = () => {
+    const weights = buildWeightsArray();
+    
+    // Safety check: return false if weights array is empty
+    if (!weights || weights.length === 0) {
+      return false;
+    }
+    
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+    
+    // Check if weights sum to 1.0 (with tolerance)
+    return Math.abs(totalWeight - 1.0) < 0.000001;
+  };
+
+  const calculateAssetMetrics = async () => {
+    try {
+      setLoading(true);
+      
+      // Call the asset metrics endpoint
+      const response = await fetch('http://localhost:8000/forecast_statistic/asset_metrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          weights: buildWeightsArray(),  // Add: Send selected asset weights
+          periods_per_year: 1.0,  // Fixed: Annual data
+          is_log: false,           // Fixed: Simple returns
+          aggregation: "pooled",   // Fixed: Use pooled for asset metrics
+          corr_method: "pooled"    // Fixed: Use pooled for correlations
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Transform the data for the frontend
+      const assetMetricsData = data.asset_metrics.map(row => ({
+        name: row.asset,
+        annualisedReturn: row.annualised_return,
+        annualisedVolatility: row.annualised_volatility
+      }));
+      
+      setAssetMetrics(assetMetricsData);
+      setCorrelationMatrix(data.correlation_matrix);
+      
+      setLoading(false);
+      
+    } catch (error) {
+      console.error('Error calculating asset metrics:', error);
+      setLoading(false);
+    }
+  };
+
   const calculatePortfolioMetrics = async () => {
+    // Prevent multiple simultaneous calculations
+    if (loading) return;
+    
     setLoading(true);
     try {
-      // Mock API call - in real app this would call your FastAPI endpoints
-      setTimeout(() => {
-        setPortfolioMetrics({
-          annualisedVolatility: 0.156,
-          annualisedDownsideDeviation: 0.112,
-          valueAtRisk: -0.089,
-          conditionalValueAtRisk: -0.134,
-          maximumDrawdown: -0.234
-        });
-        
-        // Mock projected values
-        setProjectedValues([
-          { year: 1, p1: 85000, p5: 92000, p25: 98000, p50: 108500, p75: 119000, p95: 132000, p99: 142000 },
-          { year: 2, p1: 78000, p5: 89000, p25: 102000, p50: 118000, p75: 135000, p95: 158000, p99: 175000 },
-          { year: 3, p1: 72000, p5: 87000, p25: 108000, p50: 128000, p75: 152000, p95: 185000, p99: 210000 },
-          { year: 4, p1: 68000, p5: 86000, p25: 115000, p50: 139000, p75: 170000, p95: 215000, p99: 250000 },
-          { year: 5, p1: 65000, p5: 85000, p25: 122000, p50: 151000, p75: 190000, p95: 245000, p99: 290000 }
-        ]);
-        
-        setLoading(false);
-      }, 1000);
+      // Get current parameter values and build weights array
+      const params = getCurrentParameters();
+      const weights = buildWeightsArray();
+      
+      console.log('Auto-calculating portfolio with parameters:', params);
+      console.log('Portfolio value:', portfolioValue);
+      console.log('Weights array:', weights);
+      console.log('Weights sum:', weights.reduce((sum, w) => sum + w, 0));
+      
+      // Make actual API calls to backend endpoints
+      const baseRequest = {
+        weights: weights,
+        periods_per_year: 1.0,  // Fixed: Annual data
+        aggregation: params.aggregation,
+        rebalance: params.rebalance
+      };
+      
+      // Calculate Annualised Return
+      const returnResponse = await fetch('http://localhost:8000/forecast_statistic/annualised_return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(baseRequest)
+      });
+      
+      // Calculate Annualised Volatility
+      const volatilityResponse = await fetch('http://localhost:8000/forecast_statistic/annualised_volatility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(baseRequest)
+      });
+      
+      // Calculate Sharpe Ratio
+      const sharpeResponse = await fetch('http://localhost:8000/forecast_statistic/sharpe_ratio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...baseRequest,
+          risk_free_rate: params.riskFreeRate
+        })
+      });
+      
+      // Calculate Downside Deviation
+      const downsideResponse = await fetch('http://localhost:8000/forecast_statistic/downside_deviation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...baseRequest,
+          minimum_acceptable_return: params.mar
+        })
+      });
+      
+      // Calculate VaR
+      const varResponse = await fetch('http://localhost:8000/forecast_statistic/value_at_risk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...baseRequest,
+          confidence: 0.95,  // Fixed: 95% confidence
+          var_type: params.varMethod // Dynamic VaR method selection
+        })
+      });
+      
+      // Calculate CVaR
+      const cvarResponse = await fetch('http://localhost:8000/forecast_statistic/conditional_value_at_risk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...baseRequest,
+          confidence: 0.95,  // Fixed: 95% confidence
+          var_type: params.varMethod // Dynamic VaR method selection // Default to pooled distribution
+        })
+      });
+      
+      // Calculate Maximum Drawdown
+      const mddResponse = await fetch('http://localhost:8000/forecast_statistic/maximum_drawdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(baseRequest)
+      });
+      
+      // Calculate Projected Values
+      const projectedResponse = await fetch('http://localhost:8000/forecast_statistic/projected_values', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...baseRequest,
+          initial_value: portfolioValue
+        })
+      });
+      
+      // Parse responses
+      const returnData = await returnResponse.json();
+      const volatilityData = await volatilityResponse.json();
+      const sharpeData = await sharpeResponse.json();
+      const downsideData = await downsideResponse.json();
+      const varData = await varResponse.json();
+      const cvarData = await cvarResponse.json();
+      const mddData = await mddResponse.json();
+      const projectedData = await projectedResponse.json();
+      
+      // Set portfolio metrics with real data
+      setPortfolioMetrics({
+        annualisedReturn: returnData.value,
+        annualisedVolatility: volatilityData.value,
+        annualisedDownsideDeviation: downsideData.value,
+        valueAtRisk: varData.value,
+        conditionalValueAtRisk: cvarData.value,
+        maximumDrawdown: mddData.value,
+        // Add parameter info to show what was used
+        parameters: {
+          riskFreeRate: params.riskFreeRate,
+          mar: params.mar,
+          aggregation: params.aggregation,
+          varMethod: params.varMethod,
+          rebalance: params.rebalance
+        }
+      });
+      
+      // Set projected values with real data from backend
+      setProjectedValues(projectedData.projected_values);
+      
+      setLoading(false);
       
     } catch (error) {
       console.error('Error calculating metrics:', error);
@@ -197,13 +519,21 @@ function App() {
     }
   };
 
+  const getCorrelationClass = (correlation) => {
+    if (correlation > 0.7) return 'high-positive';
+    if (correlation < -0.7) return 'high-negative';
+    if (correlation > 0) return 'positive';
+    if (correlation < 0) return 'negative';
+    return 'neutral';
+  };
+
   return (
     <div className="dashboard">
 
       
       <div className="dashboard-container">
-        {/* Left Panel - 1/5 width */}
-        <div className="left-panel">
+        {/* Left Panel - dynamic width */}
+        <div className={`left-panel ${showAllocationsGrid ? 'allocations-open' : ''}`}>
           {!showAllocationsGrid ? (
             <>
               {/* Initial Portfolio Value Input */}
@@ -211,56 +541,169 @@ function App() {
                 <div className="input-group">
                   <label>Portfolio Value ($)</label>
                   <input
-                    type="number"
-                    value={portfolioValue}
-                    onChange={(e) => setPortfolioValue(parseFloat(e.target.value) || 0)}
-                    placeholder="100000"
+                    type="text"
+                    value={portfolioValue.toLocaleString()}
+                    onChange={(e) => {
+                      // Remove commas and non-numeric characters, then parse
+                      const cleanValue = e.target.value.replace(/[^\d]/g, '');
+                      const numValue = parseInt(cleanValue) || 0;
+                      setPortfolioValue(numValue);
+                    }}
+                    onBlur={(e) => {
+                      // Ensure the value is properly formatted on blur
+                      const numValue = parseInt(e.target.value.replace(/[^\d]/g, '')) || 0;
+                      setPortfolioValue(numValue);
+                    }}
+                    placeholder="100,000"
                     className="portfolio-input"
                   />
                 </div>
-              </div>
 
-              {/* Asset Allocations Compact Button */}
-              <div className="allocations-compact">
-                {assetsLoading ? (
-                  <div className="loading-assets">
-                    <div className="loading-spinner"></div>
-                    <span>Loading assets...</span>
-                  </div>
-                ) : assetsError ? (
-                  <div className="assets-error">
-                    <span>⚠️ Error loading assets</span>
-                    <button onClick={loadAssetData} className="retry-btn">Retry</button>
-                  </div>
-                ) : (
-                  <button 
-                    className="allocations-btn"
-                    onClick={() => setShowAllocationsGrid(true)}
-                  >
-                    <div className="btn-content">
-                      <span className="btn-title">Asset Allocations</span>
-                      <span className="btn-total">Total: {getTotalAllocation().toFixed(2)}%</span>
-                      <span className="btn-selected">Selected: {getSelectedAllocations().length}/{allocations.length}</span>
-                      {getTotalAllocation() !== 100 && (
-                        <span className={`btn-status ${getTotalAllocation() > 100 ? 'over' : 'under'}`}>
-                          {getTotalAllocation() > 100 ? 'Over' : 'Under'}
-                        </span>
-                      )}
+                {/* Asset Allocations Compact Button */}
+                <div className="allocations-compact">
+                  {assetsLoading ? (
+                    <div className="loading-assets">
+                      <div className="loading-spinner"></div>
+                      <span>Loading assets...</span>
                     </div>
-                  </button>
+                  ) : assetsError ? (
+                    <div className="assets-error">
+                      <span>⚠️ Error loading assets</span>
+                      <button onClick={loadAssetData} className="retry-btn">Retry</button>
+                    </div>
+                  ) : (
+                    <button 
+                      className="allocations-btn"
+                      onClick={() => setShowAllocationsGrid(true)}
+                    >
+                      <div className="btn-content">
+                        <span className="btn-title">Asset Allocations</span>
+                        <span className="btn-total">Total: {getTotalAllocation().toFixed(2)}%</span>
+                        <span className="btn-selected">Selected: {getSelectedAllocations().length}/{allocations.length || 0}</span>
+                        {getTotalAllocation() !== 100 && (
+                          <span className={`btn-status ${getTotalAllocation() > 100 ? 'over' : 'under'}`}>
+                            {getTotalAllocation() > 100 ? 'Over' : 'Under'}
+                          </span>
+                        )}
+                        {loading && (
+                          <span className="btn-status btn-calculating">
+                            <div className="loading-spinner-small"></div>
+                            Calculating...
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Risk Management Parameters */}
+              <div className="input-section">
+                <h3>Risk Parameters</h3>
+                
+                {/* Auto-calculation Status */}
+                {loading && (
+                  <div className="auto-calc-status">
+                    <div className="loading-spinner-small"></div>
+                    <span>Auto-calculating...</span>
+                  </div>
                 )}
+                
+                {/* Risk Free Rate */}
+                <div className="input-group">
+                  <label>Risk Free Rate (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={(riskFreeRate * 100).toFixed(2)}
+                    onChange={(e) => setRiskFreeRate(parseFloat(e.target.value) / 100 || 0)}
+                    placeholder="2.00"
+                    className={`portfolio-input ${getInputError('riskFreeRate') ? 'input-error' : ''}`}
+                  />
+                  {getInputError('riskFreeRate') && (
+                    <span className="error-message">{getInputError('riskFreeRate')}</span>
+                  )}
+                </div>
+
+                {/* Minimum Acceptable Return */}
+                <div className="input-group">
+                  <label>Minimum Acceptable Return (MAR) (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="-100"
+                    max="100"
+                    value={(mar * 100).toFixed(2)}
+                    onChange={(e) => setMar(parseFloat(e.target.value) / 100 || 0)}
+                    placeholder="0.00"
+                    className={`portfolio-input ${getInputError('mar') ? 'input-error' : ''}`}
+                  />
+                  {getInputError('mar') && (
+                    <span className="error-message">{getInputError('mar')}</span>
+                  )}
+                </div>
+
+
+
+                {/* Aggregation Method */}
+                <div className="input-group">
+                  <label>Aggregation Method</label>
+                  <select
+                    value={aggregation}
+                    onChange={(e) => setAggregation(e.target.value)}
+                    className="portfolio-input"
+                  >
+                    <option value="mean">Mean Across Simulations</option>
+                    <option value="median">Median Across Simulations</option>
+                  </select>
+                </div>
+
+                {/* VaR Method */}
+                <div className="input-group">
+                  <label>VaR Calculation Method</label>
+                  <select
+                    value={varMethod}
+                    onChange={(e) => setVarMethod(e.target.value)}
+                    className="portfolio-input"
+                  >
+                    <option value="pooled">Pooled Distribution (All Years Together)</option>
+                    <option value="cumulative">Investment Horizon VaR (Cumulative)</option>
+                  </select>
+                  <small className="input-help">
+                    {varMethod === 'pooled' && "Single VaR estimate from all 200,000 simulated returns"}
+                    {varMethod === 'cumulative' && "VaR of 20-year terminal portfolio values"}
+                  </small>
+                </div>
+
+                {/* Rebalancing Strategy */}
+                <div className="input-group">
+                  <label>Rebalancing Strategy</label>
+                  <select
+                    value={rebalance}
+                    onChange={(e) => setRebalance(e.target.value)}
+                    className="portfolio-input"
+                  >
+                    <option value="periodic">Periodic Rebalancing</option>
+                    <option value="none">Buy & Hold (No Rebalancing)</option>
+                  </select>
+                  <small className="input-help">
+                    {rebalance === 'periodic' && "Rebalance to target weights each period"}
+                    {rebalance === 'none' && "Let weights drift naturally over time"}
+                  </small>
+                </div>
+
+
               </div>
 
 
 
-              {/* Calculate Button */}
-              <button 
-                className="calculate-btn"
-                onClick={calculatePortfolioMetrics}
-                disabled={loading || getTotalAllocation() !== 100 || getSelectedAllocations().length === 0}
-              >
-                {loading ? 'Calculating...' : 'Calculate Portfolio'}
-              </button>
+
+
+
+
+
             </>
           ) : (
             /* Full Screen Allocations View */
@@ -323,8 +766,16 @@ function App() {
           )}
         </div>
 
-        {/* Right Panel - 4/5 width */}
-        <div className="right-panel">
+        {/* Right Panel - dynamic width */}
+        <div className={`right-panel ${showAllocationsGrid ? 'allocations-open' : ''}`}>
+          {/* Auto-calculation Status Bar */}
+          {loading && (
+            <div className="calc-status-bar">
+              <div className="loading-spinner-small"></div>
+              <span>Portfolio metrics updating...</span>
+            </div>
+          )}
+          
           {/* Tabs */}
           <div className="tabs-container">
             <button 
@@ -350,6 +801,12 @@ function App() {
               onClick={() => setActiveTab('asset-metrics')}
             >
               Asset Metrics
+            </button>
+            <button 
+              className={`tab ${activeTab === 'asset-correlation' ? 'active' : ''}`}
+              onClick={() => setActiveTab('asset-correlation')}
+            >
+              Asset Correlation
             </button>
           </div>
 
@@ -414,13 +871,29 @@ function App() {
             {activeTab === 'projected-value' && (
               <div className="projected-chart">
                 <h3>Projected Portfolio Values</h3>
+                <p className="chart-subtitle">Chart starts at initial value (Year 0) and shows projected values with upside percentages</p>
                 {projectedValues ? (
-                  <ResponsiveContainer width="100%" height={400}>
+                  <ResponsiveContainer width="100%" height="90%">
                     <LineChart data={projectedValues}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="year" />
-                      <YAxis />
-                      <Tooltip />
+                      <XAxis 
+                        dataKey="year" 
+                        domain={[0, 'dataMax']}
+                        ticks={[0, 5, 10, 15, 20]}
+                      />
+                      <YAxis 
+                        tickFormatter={(value) => formatYAxisLabel(value)}
+                        domain={[0, 'dataMax']}
+                        allowDecimals={true}
+                        ticks={generateYTicks()}
+                      />
+                      <Tooltip 
+                        formatter={(value) => [
+                          `${formatTooltipValue(value)} (${formatUpside(calculateUpside(value))})`,
+                          'Value (Upside)'
+                        ]}
+                        labelFormatter={(label) => `Year ${label}`}
+                      />
                       <Legend />
                       <Line type="monotone" dataKey="p1" stroke="#FF0000" name="1st Percentile" />
                       <Line type="monotone" dataKey="p5" stroke="#FF6600" name="5th Percentile" />
@@ -433,7 +906,7 @@ function App() {
                   </ResponsiveContainer>
                 ) : (
                   <div className="no-data-message">
-                    <p>Click "Calculate Portfolio" to see projected values</p>
+                    <p>Projected values will update automatically when allocations are complete</p>
                   </div>
                 )}
               </div>
@@ -476,10 +949,10 @@ function App() {
                       </tbody>
                     </table>
                   </div>
-                ) : (
-                  <div className="no-data-message">
-                    <p>Click "Calculate Portfolio" to see performance metrics</p>
-                  </div>
+                                  ) : (
+                    <div className="no-data-message">
+                      <p>Portfolio metrics will update automatically when allocations are complete</p>
+                    </div>
                   )}
               </div>
             )}
@@ -487,11 +960,17 @@ function App() {
             {/* Asset Metrics Tab */}
             {activeTab === 'asset-metrics' && (
               <div className="asset-metrics-section">
-                {assetMetrics ? (
-                  <div className="metrics-row">
-                    {/* Asset Returns & Volatility */}
+                <h3>Asset Metrics</h3>
+                {loading ? (
+                  <div className="loading-message">
+                    <div className="loading-spinner"></div>
+                    <p>Calculating asset metrics...</p>
+                  </div>
+                ) : assetMetrics && assetMetrics.length > 0 ? (
+                  <>
+                                        {/* Asset Returns & Volatility Table */}
                     <div className="asset-metrics-table">
-                      <h3>Asset Returns & Volatility</h3>
+                      <h4>Asset Returns & Volatility</h4>
                       <table>
                         <thead>
                           <tr>
@@ -501,56 +980,92 @@ function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {assetMetrics.filter(asset => 
-                            allocations.find(a => a.name === asset.name && a.selected)
-                          ).map((asset, index) => (
+                          {assetMetrics.map((asset, index) => (
                             <tr key={index}>
                               <td>{asset.name}</td>
-                              <td>{(parseFloat(asset.annualisedReturn) * 100).toFixed(2)}%</td>
-                              <td>{(parseFloat(asset.annualisedVolatility) * 100).toFixed(2)}%</td>
+                              <td>{(asset.annualisedReturn * 100).toFixed(2)}%</td>
+                              <td>{(asset.annualisedVolatility * 100).toFixed(2)}%</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
+                  </>
+                ) : (
+                  <div className="no-data-message">
+                    <p>Asset metrics will be calculated when you select assets and choose aggregation method</p>
+                  </div>
+                )}
+              </div>
+            )}
 
-                    {/* Correlation Matrix */}
-                    <div className="correlation-matrix">
-                      <h3>Asset Correlation Matrix</h3>
-                      <div className="matrix-container">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th></th>
-                              {getSelectedAllocations().slice(0, 8).map(asset => (
-                                <th key={asset.id}>{asset.name.substring(0, 8)}</th>
+            {/* Asset Correlation Matrix Tab */}
+            {activeTab === 'asset-correlation' && (
+              <div className="correlation-section">
+                <h3>Asset Correlation Matrix</h3>
+                {loading ? (
+                  <div className="loading-message">
+                    <div className="loading-spinner"></div>
+                    <p>Calculating correlation matrix...</p>
+                  </div>
+                ) : correlationMatrix && correlationMatrix.length > 0 && assetMetrics && assetMetrics.length > 0 ? (
+                  <div className="correlation-heatmap">
+                    <div className="heatmap-container">
+                      <div className="heatmap-grid">
+                        {/* Header row with asset names */}
+                        <div className="heatmap-header">
+                          <div className="heatmap-corner"></div>
+                          {assetMetrics.map((asset, index) => (
+                            <div key={index} className="heatmap-header-cell">
+                              {asset.name}
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {/* Correlation data rows */}
+                        {(() => {
+                          // Transform correlation matrix to 2D format
+                          const n = assetMetrics.length;
+                          const matrix = Array(n).fill().map(() => Array(n).fill(0));
+                          
+                          // Initialize diagonal with 1.0
+                          for (let i = 0; i < n; i++) {
+                            matrix[i][i] = 1.0;
+                          }
+                          
+                          // Fill in correlations from backend data
+                          correlationMatrix.forEach(item => {
+                            const i = assetMetrics.findIndex(asset => asset.name === item.asset1);
+                            const j = assetMetrics.findIndex(asset => asset.name === item.asset2);
+                            
+                            if (i !== -1 && j !== -1) {
+                              matrix[i][j] = item.correlation;
+                              matrix[j][i] = item.correlation; // Symmetric matrix
+                            }
+                          });
+                          
+                          return matrix.map((row, rowIndex) => (
+                            <div key={rowIndex} className="heatmap-row">
+                              <div className="heatmap-row-header">
+                                {assetMetrics[rowIndex]?.name}
+                              </div>
+                              {row.map((correlation, colIndex) => (
+                                <div
+                                  key={colIndex}
+                                  className={`heatmap-cell ${getCorrelationClass(correlation)}`}
+                                  data-tooltip={`${assetMetrics[rowIndex]?.name} vs ${assetMetrics[colIndex]?.name}: ${(correlation * 100).toFixed(1)}%`}
+                                >
+                                </div>
                               ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {getSelectedAllocations().slice(0, 8).map((asset1, i) => (
-                              <tr key={asset1.id}>
-                                <td>{asset1.name.substring(0, 8)}</td>
-                                {getSelectedAllocations().slice(0, 8).map((asset2, j) => {
-                                  const correlation = correlationMatrix?.find(
-                                    corr => corr.asset1 === asset1.name && corr.asset2 === asset2.name
-                                  )?.correlation || (i === j ? '1.000' : '0.000');
-                                  return (
-                                    <td key={asset2.id} className={`correlation-cell ${parseFloat(correlation) > 0.5 ? 'high' : parseFloat(correlation) < -0.5 ? 'low' : 'medium'}`}>
-                                      {correlation}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </div>
+                          ));
+                        })()}
                       </div>
                     </div>
                   </div>
                 ) : (
                   <div className="no-data-message">
-                    <p>Asset metrics will be available after calculation</p>
+                    <p>Correlation matrix will be calculated when you select assets and choose aggregation method</p>
                   </div>
                 )}
               </div>

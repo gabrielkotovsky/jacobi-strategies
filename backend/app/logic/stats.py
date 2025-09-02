@@ -6,16 +6,18 @@ Avoids pandas in hot path for maximum efficiency.
 """
 
 import numpy as np
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union, List
 
 
-def annualised_return(period_returns: np.ndarray, periods_per_year: float = 1.0) -> float:
+def annualised_return(period_returns: np.ndarray, periods_per_year: float = 1.0, 
+                      aggregation: str = "mean") -> float:
     """
     Calculate annualized return using Compound Annual Growth Rate (CAGR).
     
     Args:
         period_returns: Period returns array of shape (T, S) where T=time periods, S=simulations
         periods_per_year: Number of periods per year (default: 1.0 for annual data)
+        aggregation: Aggregation method across simulations - "mean" or "median" (default: "mean")
     
     Returns:
         Annualized return as a float
@@ -35,22 +37,27 @@ def annualised_return(period_returns: np.ndarray, periods_per_year: float = 1.0)
     # Since we start with 1.0, final_value = cumulative_returns
     cagr_per_sim = cumulative_returns ** (1 / years) - 1  # Shape: (S,)
     
-    # Average across simulations
-    return float(np.mean(cagr_per_sim))
+    # Aggregate across simulations
+    if aggregation == "median":
+        return float(np.median(cagr_per_sim))
+    else:  # default to mean
+        return float(np.mean(cagr_per_sim))
 
 
-def annualised_volatility(period_returns: np.ndarray, periods_per_year: float = 1.0) -> float:
+def annualised_volatility(period_returns: np.ndarray, periods_per_year: float = 1.0,
+                          aggregation: str = "mean") -> float:
     """
     Calculate annualized volatility.
     
     Args:
         period_returns: Period returns array of shape (T, S) where T=time periods, S=simulations
         periods_per_year: Number of periods per year (default: 1.0 for annual data)
+        aggregation: Aggregation method across simulations - "mean" or "median" (default: "mean")
     
     Returns:
         Annualized volatility as a float
         
-    Method: Calculate std across periods per simulation, then average across simulations
+    Method: Calculate std across periods per simulation, then aggregate across simulations
     """
     # Calculate standard deviation across time periods for each simulation
     # This gives us volatility per simulation
@@ -59,37 +66,50 @@ def annualised_volatility(period_returns: np.ndarray, periods_per_year: float = 
     # Annualize by multiplying by sqrt(periods_per_year)
     annualized_vol_per_sim = vol_per_sim * np.sqrt(periods_per_year)  # Shape: (S,)
     
-    # Average across simulations
-    return float(np.mean(annualized_vol_per_sim))
+    # Aggregate across simulations
+    if aggregation == "median":
+        return float(np.median(annualized_vol_per_sim))
+    else:  # default to mean
+        return float(np.mean(annualized_vol_per_sim))
 
 
 def sharpe_ratio(period_returns: np.ndarray, risk_free_rate: float = 0.0, 
-                 periods_per_year: float = 1.0) -> float:
+                 periods_per_year: float = 1.0, aggregation: str = "mean") -> float:
     """
-    Calculate Sharpe ratio: (CAGR - RFR) / volatility.
+    Calculate Sharpe ratio: per-simulation (CAGR - RFR) / volatility, then aggregate.
     
     Args:
         period_returns: Period returns array of shape (T, S) where T=time periods, S=simulations
-        risk_free_rate: Annual risk-free rate (default: 0.0)
+        risk_free_rate: Risk-free rate (default: 0.0)
         periods_per_year: Number of periods per year (default: 1.0 for annual data)
+        aggregation: Aggregation method across simulations - "mean" or "median" (default: "mean")
     
     Returns:
         Sharpe ratio as a float
     """
-    # Get annualized return and volatility
-    annual_return = annualised_return(period_returns, periods_per_year)
-    annual_vol = annualised_volatility(period_returns, periods_per_year)
+    T, S = period_returns.shape
     
-    # Avoid division by zero
-    if annual_vol == 0:
-        return 0.0 if annual_return == risk_free_rate else np.inf
+    # Step 1: Calculate CAGR per simulation
+    cumulative_returns = (1 + period_returns).prod(axis=0)  # Shape: (S,)
+    years = T / periods_per_year
+    cagr_per_sim = cumulative_returns ** (1 / years) - 1  # Shape: (S,)
     
-    # Sharpe ratio = (return - risk_free_rate) / volatility
-    return (annual_return - risk_free_rate) / annual_vol
+    # Step 2: Calculate volatility per simulation
+    vol_per_sim = np.std(period_returns, axis=0, ddof=1)  # Shape: (S,)
+    annualized_vol_per_sim = vol_per_sim * np.sqrt(periods_per_year)  # Shape: (S,)
+    
+    # Step 3: Calculate Sharpe ratio per simulation
+    sharpe_per_sim = (cagr_per_sim - risk_free_rate) / annualized_vol_per_sim  # Shape: (S,)
+    
+    # Step 4: Aggregate across simulations
+    if aggregation == "median":
+        return float(np.median(sharpe_per_sim))
+    else:  # default to mean
+        return float(np.mean(sharpe_per_sim))
 
 
 def tracking_error(portfolio_returns: np.ndarray, benchmark_returns: np.ndarray, 
-                  periods_per_year: float = 1.0) -> float:
+                  periods_per_year: float = 1.0, aggregation: str = "mean") -> float:
     """
     Calculate tracking error: standard deviation of excess returns.
     
@@ -97,6 +117,7 @@ def tracking_error(portfolio_returns: np.ndarray, benchmark_returns: np.ndarray,
         portfolio_returns: Portfolio period returns array of shape (T, S)
         benchmark_returns: Benchmark period returns array of shape (T, S)
         periods_per_year: Number of periods per year (default: 1.0 for annual data)
+        aggregation: Aggregation method across simulations - "mean" or "median" (default: "mean")
     
     Returns:
         Annualized tracking error as a float
@@ -115,12 +136,15 @@ def tracking_error(portfolio_returns: np.ndarray, benchmark_returns: np.ndarray,
     # Annualize by multiplying by sqrt(periods_per_year)
     annualized_te_per_sim = tracking_error_per_sim * np.sqrt(periods_per_year)  # Shape: (S,)
     
-    # Average across simulations
-    return float(np.mean(annualized_te_per_sim))
+    # Aggregate across simulations
+    if aggregation == "median":
+        return float(np.median(annualized_te_per_sim))
+    else:  # default to mean
+        return float(np.mean(annualized_te_per_sim))
 
 
 def downside_deviation(period_returns: np.ndarray, minimum_acceptable_return: float = 0.0,
-                       periods_per_year: float = 1.0) -> float:
+                       periods_per_year: float = 1.0, aggregation: str = "mean") -> float:
     """
     Calculate downside deviation: sqrt(mean(min(return - MAR, 0)^2)).
     
@@ -128,6 +152,7 @@ def downside_deviation(period_returns: np.ndarray, minimum_acceptable_return: fl
         period_returns: Period returns array of shape (T, S) where T=time periods, S=simulations
         minimum_acceptable_return: Minimum acceptable return threshold (default: 0.0)
         periods_per_year: Number of periods per year (default: 1.0 for annual data)
+        aggregation: Aggregation method across simulations - "mean" or "median" (default: "mean")
     
     Returns:
         Annualized downside deviation as a float
@@ -152,182 +177,197 @@ def downside_deviation(period_returns: np.ndarray, minimum_acceptable_return: fl
     # Annualize by multiplying by sqrt(periods_per_year)
     annualized_dd_per_sim = downside_dev_per_sim * np.sqrt(periods_per_year)  # Shape: (S,)
     
-    # Average across simulations
-    return float(np.mean(annualized_dd_per_sim))
+    # Aggregate across simulations
+    if aggregation == "median":
+        return float(np.median(annualized_dd_per_sim))
+    else:  # default to mean
+        return float(np.mean(annualized_dd_per_sim))
 
 
-def value_at_risk(period_returns: np.ndarray, confidence: float = 0.95) -> float:
+def value_at_risk_1period(period_returns: np.ndarray, confidence: float = 0.95, 
+                          var_type: str = "pooled") -> Union[float, List[float]]:
     """
-    Calculate Value at Risk (VaR) at specified confidence level.
+    Calculate 1-period VaR with different calculation methods.
     
     Args:
         period_returns: Period returns array of shape (T, S) where T=time periods, S=simulations
         confidence: Confidence level (default: 0.95 for 95% VaR)
+        var_type: Calculation method - "pooled", "year_by_year", or "cumulative" (default: "pooled")
     
     Returns:
-        VaR as a float (negative value represents loss)
-        
-    Method: Pool all period returns across time and simulations, then take quantile
+        VaR as a float (negative value represents loss) for "pooled" and "cumulative"
+        List of VaR values (one per year) for "year_by_year"
     """
     if not 0 < confidence < 1:
         raise ValueError("Confidence must be between 0 and 1")
     
-    # Flatten the array to pool all period returns across time and simulations
-    # This gives us the full distribution of 1-period returns
-    all_returns = period_returns.flatten()  # Shape: (T * S,)
+    if var_type not in ["pooled", "year_by_year", "cumulative"]:
+        raise ValueError("var_type must be 'pooled', 'year_by_year', or 'cumulative'")
     
-    # Calculate VaR as the (1 - confidence) quantile
-    # For 95% confidence, we want the 5th percentile (worst 5% of returns)
+    T, S = period_returns.shape
     var_quantile = 1 - confidence
-    var = np.quantile(all_returns, var_quantile)
     
-    return float(var)
+    if var_type == "pooled":
+        # Option 2: Pooled Distribution (All Years Together)
+        # Flatten all 20 × 10,000 returns = 200,000 simulated annual returns
+        all_period_returns = period_returns.flatten()  # Shape: (T*S,)
+        var = np.quantile(all_period_returns, var_quantile)
+        return float(var)
+    
+    elif var_type == "year_by_year":
+        # Option 1: Year-by-Year VaR
+        # For each year, take all 10,000 simulated returns and compute VaR separately
+        var_per_year = []
+        for year in range(T):
+            year_returns = period_returns[year, :]  # Shape: (S,)
+            year_var = np.quantile(year_returns, var_quantile)
+            var_per_year.append(float(year_var))
+        
+        # Return list of VaR values (one per year)
+        return var_per_year
+    
+    elif var_type == "cumulative":
+        # Option 3: Investment Horizon VaR (Cumulative)
+        # Compound returns within each simulation to the T-year terminal value
+        cumulative_returns = (1 + period_returns).prod(axis=0) - 1  # Shape: (S,)
+        var = np.quantile(cumulative_returns, var_quantile)
+        return float(var)
+    
+    else:
+        raise ValueError("Invalid var_type")
 
 
-def conditional_value_at_risk(period_returns: np.ndarray, confidence: float = 0.95) -> float:
+def value_at_risk(period_returns: np.ndarray, confidence: float = 0.95, 
+                  var_type: str = "pooled") -> Union[float, List[float]]:
     """
-    Calculate Conditional Value at Risk (CVaR) at specified confidence level.
+    Calculate Value at Risk (VaR) at specified confidence level and calculation method.
+    
+    Args:
+        period_returns: Period returns array of shape (T, S)
+        confidence: Confidence level (default: 0.95 for 95% VaR)
+        var_type: Calculation method - "pooled", "year_by_year", or "cumulative" (default: "pooled")
+    
+    Returns:
+        VaR as a float (negative value represents loss) for "pooled" and "cumulative"
+        List of VaR values (one per year) for "year_by_year"
+    """
+    return value_at_risk_1period(period_returns, confidence, var_type)
+
+
+def conditional_value_at_risk_1period(period_returns: np.ndarray, confidence: float = 0.95,
+                                     var_type: str = "pooled") -> Union[float, List[float]]:
+    """
+    Calculate 1-period CVaR with different calculation methods.
     
     Args:
         period_returns: Period returns array of shape (T, S) where T=time periods, S=simulations
         confidence: Confidence level (default: 0.95 for 95% CVaR)
+        var_type: Calculation method - "pooled", "year_by_year", or "cumulative" (default: "pooled")
     
     Returns:
-        CVaR as a float (negative value represents expected loss)
-        
-    Method: Average of all returns below the VaR threshold
+        CVaR as a float (negative value represents expected loss) for "pooled" and "cumulative"
+        List of CVaR values (one per year) for "year_by_year"
     """
     if not 0 < confidence < 1:
         raise ValueError("Confidence must be between 0 and 1")
     
-    # Flatten the array to pool all period returns
-    all_returns = period_returns.flatten()  # Shape: (T * S,)
+    if var_type not in ["pooled", "year_by_year", "cumulative"]:
+        raise ValueError("var_type must be 'pooled', 'year_by_year', or 'cumulative'")
     
-    # Calculate VaR threshold
+    T, S = period_returns.shape
     var_quantile = 1 - confidence
-    var_threshold = np.quantile(all_returns, var_quantile)
     
-    # Find all returns below the VaR threshold
-    tail_returns = all_returns[all_returns <= var_threshold]
+    if var_type == "pooled":
+        # Option 2: Pooled Distribution (All Years Together)
+        all_period_returns = period_returns.flatten()  # Shape: (T*S,)
+        var_threshold = np.quantile(all_period_returns, var_quantile)
+        tail_returns = all_period_returns[all_period_returns <= var_threshold]
+        
+        if len(tail_returns) == 0:
+            return float(var_threshold)
+        
+        cvar = np.mean(tail_returns)
+        return float(cvar)
     
-    # If no returns below threshold, return VaR
-    if len(tail_returns) == 0:
-        return float(var_threshold)
+    elif var_type == "year_by_year":
+        # Option 1: Year-by-Year CVaR
+        cvar_per_year = []
+        for year in range(T):
+            year_returns = period_returns[year, :]  # Shape: (S,)
+            var_threshold = np.quantile(year_returns, var_quantile)
+            tail_returns = year_returns[year_returns <= var_threshold]
+            
+            if len(tail_returns) == 0:
+                year_cvar = var_threshold
+            else:
+                year_cvar = np.mean(tail_returns)
+            
+            cvar_per_year.append(float(year_cvar))
+        
+        # Return list of CVaR values (one per year)
+        return cvar_per_year
     
-    # CVaR is the mean of returns below VaR
-    cvar = np.mean(tail_returns)
+    elif var_type == "cumulative":
+        # Option 3: Investment Horizon CVaR (Cumulative)
+        cumulative_returns = (1 + period_returns).prod(axis=0) - 1  # Shape: (S,)
+        var_threshold = np.quantile(cumulative_returns, var_quantile)
+        tail_returns = cumulative_returns[cumulative_returns <= var_threshold]
+        
+        if len(tail_returns) == 0:
+            return float(var_threshold)
+        
+        cvar = np.mean(tail_returns)
+        return float(cvar)
     
-    return float(cvar)
+    else:
+        raise ValueError("Invalid var_type")
 
 
-def maximum_drawdown(period_returns: np.ndarray) -> float:
+def conditional_value_at_risk(period_returns: np.ndarray, confidence: float = 0.95,
+                             var_type: str = "pooled") -> Union[float, List[float]]:
     """
-    Calculate maximum drawdown: largest peak-to-trough decline.
+    Calculate Conditional Value at Risk (CVaR) at specified confidence level and calculation method.
+    
+    Args:
+        period_returns: Period returns array of shape (T, S)
+        confidence: Confidence level (default: 0.95 for 95% CVaR)
+        var_type: Calculation method - "pooled", "year_by_year", or "cumulative" (default: "pooled")
+    
+    Returns:
+        CVaR as a float (negative value represents expected loss) for "pooled" and "cumulative"
+        List of CVaR values (one per year) for "year_by_year"
+    """
+    return conditional_value_at_risk_1period(period_returns, confidence, var_type)
+
+
+def maximum_drawdown(period_returns: np.ndarray, aggregation: str = "mean") -> float:
+    """
+    Calculate maximum drawdown: largest peak-to-trough decline (positive magnitude).
     
     Args:
         period_returns: Period returns array of shape (T, S) where T=time periods, S=simulations
+        aggregation: Aggregation method across simulations - "mean" or "median" (default: "mean")
     
     Returns:
-        Maximum drawdown as a float (negative value represents decline)
-        
-    Method: Calculate cumulative returns, find rolling maximum, compute drawdowns, take minimum per sim
+        Maximum drawdown as a float (positive magnitude)
     """
     T, S = period_returns.shape
     
-    # Calculate cumulative returns for each simulation
-    # (1 + r1) * (1 + r2) * ... * (1 + rT)
+    # Step 1: Calculate cumulative returns for each simulation
     cumulative_returns = (1 + period_returns).cumprod(axis=0)  # Shape: (T, S)
     
-    # Calculate rolling maximum (peak) for each simulation
-    # np.maximum.accumulate gives us the running maximum
+    # Step 2: Calculate rolling maximum (peak) for each simulation
     rolling_max = np.maximum.accumulate(cumulative_returns, axis=0)  # Shape: (T, S)
     
-    # Calculate drawdowns: (current_value / peak_value) - 1
-    # This gives us negative values for declines, 0 at peaks
-    drawdowns = (cumulative_returns / rolling_max) - 1  # Shape: (T, S)
+    # Step 3: Calculate drawdowns: 1 - (current_value / peak_value)
+    # This gives us positive values for declines, 0 at peaks
+    drawdowns = 1 - (cumulative_returns / rolling_max)  # Shape: (T, S)
     
-    # Find the minimum drawdown for each simulation (worst decline)
-    max_dd_per_sim = np.min(drawdowns, axis=0)  # Shape: (S,)
+    # Step 4: Find the maximum drawdown for each simulation (worst decline)
+    max_dd_per_sim = np.max(drawdowns, axis=0)  # Shape: (S,) - now positive values
     
-    # Average across simulations
-    return float(np.mean(max_dd_per_sim))
-
-
-def sortino_ratio(period_returns: np.ndarray, risk_free_rate: float = 0.0,
-                  minimum_acceptable_return: float = 0.0, periods_per_year: float = 1.0) -> float:
-    """
-    Calculate Sortino ratio: (CAGR - RFR) / downside_deviation.
-    
-    Args:
-        period_returns: Period returns array of shape (T, S) where T=time periods, S=simulations
-        risk_free_rate: Annual risk-free rate (default: 0.0)
-        minimum_acceptable_return: Minimum acceptable return for downside deviation (default: 0.0)
-        periods_per_year: Number of periods per year (default: 1.0 for annual data)
-    
-    Returns:
-        Sortino ratio as a float
-    """
-    # Get annualized return and downside deviation
-    annual_return = annualised_return(period_returns, periods_per_year)
-    downside_dev = downside_deviation(period_returns, minimum_acceptable_return, periods_per_year)
-    
-    # Avoid division by zero
-    if downside_dev == 0:
-        return 0.0 if annual_return == risk_free_rate else np.inf
-    
-    # Sortino ratio = (return - risk_free_rate) / downside_deviation
-    return (annual_return - risk_free_rate) / downside_dev
-
-
-def information_ratio(portfolio_returns: np.ndarray, benchmark_returns: np.ndarray,
-                     periods_per_year: float = 1.0) -> float:
-    """
-    Calculate information ratio: excess return / tracking error.
-    
-    Args:
-        portfolio_returns: Portfolio period returns array of shape (T, S)
-        benchmark_returns: Benchmark period returns array of shape (T, S)
-        periods_per_year: Number of periods per year (default: 1.0 for annual data)
-    
-    Returns:
-        Information ratio as a float
-    """
-    # Calculate excess return (portfolio - benchmark)
-    portfolio_cagr = annualised_return(portfolio_returns, periods_per_year)
-    benchmark_cagr = annualised_return(benchmark_returns, periods_per_year)
-    excess_return = portfolio_cagr - benchmark_cagr
-    
-    # Calculate tracking error
-    tracking_err = tracking_error(portfolio_returns, benchmark_returns, periods_per_year)
-    
-    # Avoid division by zero
-    if tracking_err == 0:
-        return 0.0 if excess_return == 0 else np.inf
-    
-    # Information ratio = excess_return / tracking_error
-    return excess_return / tracking_err
-
-
-def calmar_ratio(period_returns: np.ndarray, risk_free_rate: float = 0.0,
-                 periods_per_year: float = 1.0) -> float:
-    """
-    Calculate Calmar ratio: (CAGR - RFR) / |maximum_drawdown|.
-    
-    Args:
-        period_returns: Period returns array of shape (T, S) where T=time periods, S=simulations
-        risk_free_rate: Annual risk-free rate (default: 0.0)
-        periods_per_year: Number of periods per year (default: 1.0 for annual data)
-    
-    Returns:
-        Calmar ratio as a float
-    """
-    # Get annualized return and maximum drawdown
-    annual_return = annualised_return(period_returns, periods_per_year)
-    max_dd = maximum_drawdown(period_returns)
-    
-    # Avoid division by zero
-    if max_dd == 0:
-        return 0.0 if annual_return == risk_free_rate else np.inf
-    
-    # Calmar ratio = (return - risk_free_rate) / |maximum_drawdown|
-    return (annual_return - risk_free_rate) / abs(max_dd)
+    # Step 5: Aggregate across simulations
+    if aggregation == "median":
+        return float(np.median(max_dd_per_sim))
+    else:  # default to mean
+        return float(np.mean(max_dd_per_sim))

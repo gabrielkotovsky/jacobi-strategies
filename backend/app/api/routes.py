@@ -3,11 +3,13 @@ FastAPI routes for forecast statistics endpoints.
 """
 
 from fastapi import APIRouter, HTTPException
+import numpy as np
 from app.api.schemas import (
     ForecastStatisticRequest,
     RiskFreeRateRequest,
     MinimumAcceptableReturnRequest,
     ConfidenceRequest,
+    AssetMetricsRequest,
     TrackingErrorRequest,
     ForecastStatisticResponse
 )
@@ -71,19 +73,18 @@ async def forecast_annualised_return(request: ForecastStatisticRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.include_categories,
-            request.exclude_categories
+            request.rebalance
         )
         
         # Calculate annualized return
-        value = annualised_return(portfolio_returns, request.periods_per_year)
+        value = annualised_return(portfolio_returns, request.periods_per_year, request.aggregation)
         
         # Prepare response
         params = get_calculation_params(
             weights=request.weights,
-            include_categories=request.include_categories,
-            exclude_categories=request.exclude_categories,
-            periods_per_year=request.periods_per_year
+            periods_per_year=request.periods_per_year,
+            aggregation=request.aggregation,
+            rebalance=request.rebalance
         )
         
         return ForecastStatisticResponse(
@@ -92,7 +93,8 @@ async def forecast_annualised_return(request: ForecastStatisticRequest):
             params=params,
             n_assets_used=n_assets_used,
             timesteps=20,
-            simulations=10000
+            simulations=10000,
+            aggregation=f"{request.aggregation}_across_simulations"
         )
         
     except Exception as e:
@@ -109,19 +111,18 @@ async def forecast_annualised_volatility(request: ForecastStatisticRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.include_categories,
-            request.exclude_categories
+            request.rebalance
         )
         
         # Calculate annualized volatility
-        value = annualised_volatility(portfolio_returns, request.periods_per_year)
+        value = annualised_volatility(portfolio_returns, request.periods_per_year, request.aggregation)
         
         # Prepare response
         params = get_calculation_params(
             weights=request.weights,
-            include_categories=request.include_categories,
-            exclude_categories=request.exclude_categories,
-            periods_per_year=request.periods_per_year
+            periods_per_year=request.periods_per_year,
+            aggregation=request.aggregation,
+            rebalance=request.rebalance
         )
         
         return ForecastStatisticResponse(
@@ -130,7 +131,8 @@ async def forecast_annualised_volatility(request: ForecastStatisticRequest):
             params=params,
             n_assets_used=n_assets_used,
             timesteps=20,
-            simulations=10000
+            simulations=10000,
+            aggregation=f"{request.aggregation}_across_simulations"
         )
         
     except Exception as e:
@@ -147,23 +149,23 @@ async def forecast_sharpe_ratio(request: RiskFreeRateRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.include_categories,
-            request.exclude_categories
+            request.rebalance
         )
         
         # Calculate Sharpe ratio
         value = sharpe_ratio(
             portfolio_returns, 
             request.risk_free_rate, 
-            request.periods_per_year
+            request.periods_per_year,
+            request.aggregation
         )
         
         # Prepare response
         params = get_calculation_params(
             weights=request.weights,
-            include_categories=request.include_categories,
-            exclude_categories=request.exclude_categories,
             periods_per_year=request.periods_per_year,
+            aggregation=request.aggregation,
+            rebalance=request.rebalance,
             risk_free_rate=request.risk_free_rate
         )
         
@@ -173,7 +175,8 @@ async def forecast_sharpe_ratio(request: RiskFreeRateRequest):
             params=params,
             n_assets_used=n_assets_used,
             timesteps=20,
-            simulations=10000
+            simulations=10000,
+            aggregation=f"{request.aggregation}_across_simulations"
         )
         
     except Exception as e:
@@ -190,30 +193,28 @@ async def forecast_tracking_error(request: TrackingErrorRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.include_categories,
-            request.exclude_categories
+            request.rebalance
         )
         
         # Build benchmark returns
         benchmark_returns = build_benchmark_returns(
-            request.benchmark_weights,
-            request.include_categories,
-            request.exclude_categories
+            request.benchmark_weights
         )
         
         # Calculate tracking error
         value = tracking_error(
             portfolio_returns, 
             benchmark_returns, 
-            request.periods_per_year
+            request.periods_per_year,
+            request.aggregation
         )
         
         # Prepare response
         params = get_calculation_params(
             weights=request.weights,
-            include_categories=request.include_categories,
-            exclude_categories=request.exclude_categories,
             periods_per_year=request.periods_per_year,
+            aggregation=request.aggregation,
+            rebalance=request.rebalance,
             benchmark_weights=request.benchmark_weights
         )
         
@@ -223,7 +224,8 @@ async def forecast_tracking_error(request: TrackingErrorRequest):
             params=params,
             n_assets_used=n_assets_used,
             timesteps=20,
-            simulations=10000
+            simulations=10000,
+            aggregation=f"{request.aggregation}_across_simulations"
         )
         
     except Exception as e:
@@ -240,23 +242,23 @@ async def forecast_downside_deviation(request: MinimumAcceptableReturnRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.include_categories,
-            request.exclude_categories
+            request.rebalance
         )
         
         # Calculate downside deviation
         value = downside_deviation(
             portfolio_returns, 
             request.minimum_acceptable_return, 
-            request.periods_per_year
+            request.periods_per_year,
+            request.aggregation
         )
         
         # Prepare response
         params = get_calculation_params(
             weights=request.weights,
-            include_categories=request.include_categories,
-            exclude_categories=request.exclude_categories,
             periods_per_year=request.periods_per_year,
+            aggregation=request.aggregation,
+            rebalance=request.rebalance,
             minimum_acceptable_return=request.minimum_acceptable_return
         )
         
@@ -266,7 +268,8 @@ async def forecast_downside_deviation(request: MinimumAcceptableReturnRequest):
             params=params,
             n_assets_used=n_assets_used,
             timesteps=20,
-            simulations=10000
+            simulations=10000,
+            aggregation=f"{request.aggregation}_across_simulations"
         )
         
     except Exception as e:
@@ -277,35 +280,35 @@ async def forecast_value_at_risk(request: ConfidenceRequest):
     """
     Calculate Value at Risk (VaR) for a portfolio.
     
-    VaR = Quantile of return distribution at specified confidence level
+    VaR = Quantile of 1-period return distribution at specified confidence level
     """
     try:
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.include_categories,
-            request.exclude_categories
+            request.rebalance
         )
         
-        # Calculate VaR
-        value = value_at_risk(portfolio_returns, request.confidence)
+        # Calculate VaR with specified method
+        value = value_at_risk(portfolio_returns, request.confidence, request.var_type)
         
         # Prepare response
         params = get_calculation_params(
             weights=request.weights,
-            include_categories=request.include_categories,
-            exclude_categories=request.exclude_categories,
             periods_per_year=request.periods_per_year,
+            rebalance=request.rebalance,
+            var_type=request.var_type,
             confidence=request.confidence
         )
         
         return ForecastStatisticResponse(
             value=value,
-            method=f"Value at Risk ({request.confidence*100:.0f}% confidence)",
+            method=f"Value at Risk ({request.confidence*100:.0f}% confidence, {request.var_type})",
             params=params,
             n_assets_used=n_assets_used,
             timesteps=20,
-            simulations=10000
+            simulations=10000,
+            aggregation="quantile_across_all_data"
         )
         
     except Exception as e:
@@ -316,35 +319,35 @@ async def forecast_conditional_value_at_risk(request: ConfidenceRequest):
     """
     Calculate Conditional Value at Risk (CVaR) for a portfolio.
     
-    CVaR = Expected loss when exceeding VaR threshold
+    CVaR = Expected loss when exceeding VaR threshold at specified confidence level
     """
     try:
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.include_categories,
-            request.exclude_categories
+            request.rebalance
         )
         
-        # Calculate CVaR
-        value = conditional_value_at_risk(portfolio_returns, request.confidence)
+        # Calculate CVaR with specified method
+        value = conditional_value_at_risk(portfolio_returns, request.confidence, request.var_type)
         
         # Prepare response
         params = get_calculation_params(
             weights=request.weights,
-            include_categories=request.include_categories,
-            exclude_categories=request.exclude_categories,
             periods_per_year=request.periods_per_year,
+            rebalance=request.rebalance,
+            var_type=request.var_type,
             confidence=request.confidence
         )
         
         return ForecastStatisticResponse(
             value=value,
-            method=f"Conditional Value at Risk ({request.confidence*100:.0f}% confidence)",
+            method=f"Conditional Value at Risk ({request.confidence*100:.0f}% confidence, {request.var_type})",
             params=params,
             n_assets_used=n_assets_used,
             timesteps=20,
-            simulations=10000
+            simulations=10000,
+            aggregation="mean_of_tail_distribution"
         )
         
     except Exception as e:
@@ -361,29 +364,114 @@ async def forecast_maximum_drawdown(request: ForecastStatisticRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.include_categories,
-            request.exclude_categories
+            request.rebalance
         )
         
         # Calculate maximum drawdown
-        value = maximum_drawdown(portfolio_returns)
+        value = maximum_drawdown(portfolio_returns, request.aggregation)
         
         # Prepare response
         params = get_calculation_params(
             weights=request.weights,
-            include_categories=request.include_categories,
-            exclude_categories=request.exclude_categories,
-            periods_per_year=request.periods_per_year
+            periods_per_year=request.periods_per_year,
+            aggregation=request.aggregation,
+            rebalance=request.rebalance
         )
         
         return ForecastStatisticResponse(
             value=value,
-            method="Peak-to-Trough Maximum Decline",
+            method="Peak-to-Trough Maximum Decline (Positive Magnitude)",
             params=params,
             n_assets_used=n_assets_used,
             timesteps=20,
-            simulations=10000
+            simulations=10000,
+            aggregation=f"{request.aggregation}_across_simulations"
         )
         
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/projected_values")
+async def projected_values_endpoint(request: ForecastStatisticRequest):
+    """Calculate projected portfolio values over time with percentiles."""
+    try:
+        # Build portfolio returns
+        portfolio_returns, n_assets_used = build_portfolio_returns(
+            request.weights,
+            request.rebalance
+        )
+        
+        # Calculate projected values using the portfolio service
+        from app.services.portfolio import calculate_projected_values
+        
+        # Get initial portfolio value from request (default to 100000 if not provided)
+        initial_value = getattr(request, 'initial_value', 100000.0)
+        
+        projected_values = calculate_projected_values(
+            portfolio_returns, 
+            initial_value, 
+            request.rebalance
+        )
+        
+        # Prepare response
+        params = get_calculation_params(
+            weights=request.weights,
+            periods_per_year=request.periods_per_year,
+            aggregation=request.aggregation,
+            rebalance=request.rebalance,
+            initial_value=initial_value
+        )
+        
+        return {
+            "projected_values": projected_values,
+            "method": "Projected Portfolio Values with Percentiles",
+            "params": params,
+            "n_assets_used": n_assets_used,
+            "timesteps": portfolio_returns.shape[0],
+            "simulations": portfolio_returns.shape[1],
+            "rebalance": request.rebalance
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/asset_metrics")
+async def asset_metrics_endpoint(request: AssetMetricsRequest):
+    """Calculate per-asset annualised returns, volatilities, and correlation matrix."""
+    try:
+        # Get returns data
+        returns, asset_names, asset_categories, asset_index_to_category = get_cached_data()
+        
+        # Calculate asset metrics using the portfolio service
+        from app.services.portfolio import calculate_asset_metrics
+        
+        # Convert weights to numpy array
+        weights_array = np.array(request.weights)
+        
+        asset_metrics = calculate_asset_metrics(
+            returns=returns, weights=weights_array,
+            periods_per_year=request.periods_per_year,
+            is_log=request.is_log,
+            aggregation=request.aggregation,
+            corr_method=request.corr_method
+        )
+        
+        # Prepare response
+        params = get_calculation_params(
+            weights=[],  # Not applicable for asset metrics
+            periods_per_year=request.periods_per_year,
+            aggregation=request.aggregation,
+            is_log=request.is_log,
+            corr_method=request.corr_method
+        )
+        
+        return {
+            "asset_metrics": asset_metrics["asset_metrics"],
+            "correlation_matrix": asset_metrics["correlation_matrix"],
+            "method": "Asset-Level Annualised Returns, Volatilities, and Correlations",
+            "params": params,
+            "n_assets": len(asset_names),
+            "timesteps": returns.shape[1],
+            "simulations": returns.shape[2]
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

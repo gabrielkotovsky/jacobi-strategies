@@ -16,154 +16,80 @@ from app.logic.stats import (
     maximum_drawdown
 )
 
-def get_asset_mask(include_categories: Optional[List[str]] = None, 
-                   exclude_categories: Optional[List[str]] = None) -> np.ndarray:
-    """
-    Get asset mask based on category filters.
-    
-    Args:
-        include_categories: List of categories to include (None = all)
-        exclude_categories: List of categories to exclude (None = none)
-    
-    Returns:
-        Boolean mask array indicating which assets to use
-    """
-    try:
-        returns, asset_names, asset_categories, asset_index_to_category = get_cached_data()
-    except RuntimeError:
-        raise RuntimeError("Data cache not initialized. Please restart the API.")
-    
-    n_assets = len(asset_names)
-    asset_mask = np.ones(n_assets, dtype=bool)
-    
-    # Apply include filter
-    if include_categories:
-        include_mask = np.zeros(n_assets, dtype=bool)
-        for i, category in enumerate(asset_categories):
-            if category in include_categories:
-                include_mask[i] = True
-        asset_mask &= include_mask
-    
-    # Apply exclude filter
-    if exclude_categories:
-        exclude_mask = np.ones(n_assets, dtype=bool)
-        for i, category in enumerate(asset_categories):
-            if category in exclude_categories:
-                exclude_mask[i] = False
-        asset_mask &= exclude_mask
-    
-    # Ensure at least one asset is selected
-    if not np.any(asset_mask):
-        raise ValueError("No assets match the specified category filters")
-    
-    return asset_mask
 
-def normalize_weights(weights: List[float], asset_mask: np.ndarray) -> Tuple[np.ndarray, int]:
-    """
-    Normalize weights to match the asset mask and ensure they sum to 1.0.
-    
-    Args:
-        weights: Original portfolio weights
-        asset_mask: Boolean mask indicating which assets to use
-    
-    Returns:
-        Tuple of (normalized_weights, n_assets_used)
-    """
-    n_total_assets = len(asset_mask)
-    n_selected_assets = np.sum(asset_mask)
-    
-    # Validate weights length
-    if len(weights) != n_total_assets:
-        raise ValueError(f"Expected {n_total_assets} weights, got {len(weights)}")
-    
-    # Apply asset mask to weights
-    masked_weights = np.array(weights)[asset_mask]
-    
-    # Normalize to sum to 1.0
-    weight_sum = np.sum(masked_weights)
-    if weight_sum == 0:
-        # If all weights are zero, use equal weights
-        normalized_weights = np.ones(n_selected_assets) / n_selected_assets
-    else:
-        normalized_weights = masked_weights / weight_sum
-    
-    return normalized_weights, n_selected_assets
 
 def build_portfolio_returns(weights: List[float], 
-                           include_categories: Optional[List[str]] = None,
-                           exclude_categories: Optional[List[str]] = None) -> Tuple[np.ndarray, int]:
+                           rebalance: str = "periodic") -> Tuple[np.ndarray, int]:
     """
-    Build portfolio returns using the specified weights and category filters.
+    Build portfolio returns using the specified weights.
     
     Args:
         weights: Portfolio weights
-        include_categories: Categories to include
-        exclude_categories: Categories to exclude
+        rebalance: Rebalancing strategy ('periodic' or 'none')
     
     Returns:
         Tuple of (portfolio_returns, n_assets_used)
     """
-    # Get asset mask based on category filters
-    asset_mask = get_asset_mask(include_categories, exclude_categories)
-    
-    # Normalize weights
-    normalized_weights, n_assets_used = normalize_weights(weights, asset_mask)
-    
     # Get returns data
     returns, asset_names, asset_categories, asset_index_to_category = get_cached_data()
     
-    # Apply asset mask to returns
-    masked_returns = returns[asset_mask, :, :]  # Shape: (n_selected_assets, 20, 10000)
+    # Validate weights length
+    if len(weights) != len(asset_names):
+        raise ValueError(f"Expected {len(asset_names)} weights, got {len(weights)}")
     
-    # Calculate portfolio returns using einsum
-    portfolio_returns = np.einsum('a,ats->ts', normalized_weights, masked_returns)
+    # Convert weights to numpy array and validate
+    weights_array = np.array(weights)
+    if not np.allclose(np.sum(weights_array), 1.0, atol=1e-6):
+        raise ValueError(f"Weights must sum to 1.0, got {np.sum(weights_array):.6f}")
     
-    return portfolio_returns, n_assets_used
+    # Calculate portfolio returns using portfolio service with rebalancing
+    from app.services.portfolio import portfolio_period_returns
+    portfolio_returns = portfolio_period_returns(weights_array, returns, rebalance)
+    
+    return portfolio_returns, len(asset_names)
 
-def build_benchmark_returns(benchmark_weights: List[float],
-                           include_categories: Optional[List[str]] = None,
-                           exclude_categories: Optional[List[str]] = None) -> np.ndarray:
+def build_benchmark_returns(benchmark_weights: List[float]) -> np.ndarray:
     """
-    Build benchmark returns using the specified weights and category filters.
+    Build benchmark returns using the specified weights.
     
     Args:
         benchmark_weights: Benchmark portfolio weights
-        include_categories: Categories to include
-        exclude_categories: Categories to exclude
     
     Returns:
         Benchmark portfolio returns
     """
-    # Get asset mask based on category filters
-    asset_mask = get_asset_mask(include_categories, exclude_categories)
-    
-    # Normalize weights
-    normalized_weights, _ = normalize_weights(benchmark_weights, asset_mask)
-    
     # Get returns data
     returns, asset_names, asset_categories, asset_index_to_category = get_cached_data()
     
-    # Apply asset mask to returns
-    masked_returns = returns[asset_mask, :, :]
+    # Validate weights length
+    if len(benchmark_weights) != len(asset_names):
+        raise ValueError(f"Expected {len(asset_names)} benchmark weights, got {len(benchmark_weights)}")
+    
+    # Convert weights to numpy array and validate
+    weights_array = np.array(benchmark_weights)
+    if not np.allclose(np.sum(weights_array), 1.0, atol=1e-6):
+        raise ValueError(f"Benchmark weights must sum to 1.0, got {np.sum(weights_array):.6f}")
     
     # Calculate benchmark returns using einsum
-    benchmark_returns = np.einsum('a,ats->ts', normalized_weights, masked_returns)
+    benchmark_returns = np.einsum('a,ats->ts', weights_array, returns)
     
     return benchmark_returns
 
 def get_calculation_params(weights: List[float],
-                          include_categories: Optional[List[str]] = None,
-                          exclude_categories: Optional[List[str]] = None,
                           periods_per_year: float = 1.0,
+                          aggregation: str = "mean",
+                          var_type: str = "pooled",
+                          rebalance: str = "periodic",
                           **kwargs) -> dict:
     """
     Get parameters used in calculation for response.
     
     Args:
         weights: Portfolio weights
-        include_categories: Categories to include
-        exclude_categories: Categories to exclude
         periods_per_year: Periods per year
+        aggregation: Aggregation method
+        var_type: VaR calculation type
+        rebalance: Rebalancing strategy
         **kwargs: Additional parameters
     
     Returns:
@@ -172,8 +98,9 @@ def get_calculation_params(weights: List[float],
     params = {
         "weights": weights,
         "periods_per_year": periods_per_year,
-        "include_categories": include_categories,
-        "exclude_categories": exclude_categories
+        "aggregation": aggregation,
+        "rebalance": rebalance,
+        "var_type": var_type
     }
     
     # Add additional parameters
