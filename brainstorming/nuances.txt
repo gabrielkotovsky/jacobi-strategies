@@ -1,6 +1,0 @@
-annualized_return: geometric vs arithmetic
-annualized_volatility: sample vs population, pooled vs per-sim
-tracking_error: pooled vs per-sim
-downside_deviation: pooled vs per-sim
-value_at_risk: Per-year (time series of VaR) vs Flatten across years (one annual VaR number) vs Terminal horizon (20-year compounded), confidence level
-maximum_drawdown: horizon, pooled vs per-simulation

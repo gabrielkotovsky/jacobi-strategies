@@ -73,7 +73,9 @@ async def forecast_annualised_return(request: ForecastStatisticRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.rebalance
+            request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         # Calculate annualized return
@@ -84,7 +86,9 @@ async def forecast_annualised_return(request: ForecastStatisticRequest):
             weights=request.weights,
             periods_per_year=request.periods_per_year,
             aggregation=request.aggregation,
-            rebalance=request.rebalance
+            rebalance=request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         return ForecastStatisticResponse(
@@ -111,7 +115,9 @@ async def forecast_annualised_volatility(request: ForecastStatisticRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.rebalance
+            request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         # Calculate annualized volatility
@@ -122,7 +128,9 @@ async def forecast_annualised_volatility(request: ForecastStatisticRequest):
             weights=request.weights,
             periods_per_year=request.periods_per_year,
             aggregation=request.aggregation,
-            rebalance=request.rebalance
+            rebalance=request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         return ForecastStatisticResponse(
@@ -149,7 +157,9 @@ async def forecast_sharpe_ratio(request: RiskFreeRateRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.rebalance
+            request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         # Calculate Sharpe ratio
@@ -166,6 +176,8 @@ async def forecast_sharpe_ratio(request: RiskFreeRateRequest):
             periods_per_year=request.periods_per_year,
             aggregation=request.aggregation,
             rebalance=request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories,
             risk_free_rate=request.risk_free_rate
         )
         
@@ -193,7 +205,9 @@ async def forecast_tracking_error(request: TrackingErrorRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.rebalance
+            request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         # Build benchmark returns
@@ -215,6 +229,8 @@ async def forecast_tracking_error(request: TrackingErrorRequest):
             periods_per_year=request.periods_per_year,
             aggregation=request.aggregation,
             rebalance=request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories,
             benchmark_weights=request.benchmark_weights
         )
         
@@ -242,7 +258,9 @@ async def forecast_downside_deviation(request: MinimumAcceptableReturnRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.rebalance
+            request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         # Calculate downside deviation
@@ -259,6 +277,8 @@ async def forecast_downside_deviation(request: MinimumAcceptableReturnRequest):
             periods_per_year=request.periods_per_year,
             aggregation=request.aggregation,
             rebalance=request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories,
             minimum_acceptable_return=request.minimum_acceptable_return
         )
         
@@ -286,7 +306,9 @@ async def forecast_value_at_risk(request: ConfidenceRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.rebalance
+            request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         # Calculate VaR with specified method
@@ -297,6 +319,8 @@ async def forecast_value_at_risk(request: ConfidenceRequest):
             weights=request.weights,
             periods_per_year=request.periods_per_year,
             rebalance=request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories,
             var_type=request.var_type,
             confidence=request.confidence
         )
@@ -325,7 +349,9 @@ async def forecast_conditional_value_at_risk(request: ConfidenceRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.rebalance
+            request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         # Calculate CVaR with specified method
@@ -336,6 +362,8 @@ async def forecast_conditional_value_at_risk(request: ConfidenceRequest):
             weights=request.weights,
             periods_per_year=request.periods_per_year,
             rebalance=request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories,
             var_type=request.var_type,
             confidence=request.confidence
         )
@@ -364,18 +392,24 @@ async def forecast_maximum_drawdown(request: ForecastStatisticRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.rebalance
+            request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
-        # Calculate maximum drawdown
+        # Calculate maximum drawdown (conventional negative drawdown)
         value = maximum_drawdown(portfolio_returns, request.aggregation)
+        # Return positive magnitude to clients
+        value = abs(value)
         
         # Prepare response
         params = get_calculation_params(
             weights=request.weights,
             periods_per_year=request.periods_per_year,
             aggregation=request.aggregation,
-            rebalance=request.rebalance
+            rebalance=request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         return ForecastStatisticResponse(
@@ -398,7 +432,9 @@ async def projected_values_endpoint(request: ForecastStatisticRequest):
         # Build portfolio returns
         portfolio_returns, n_assets_used = build_portfolio_returns(
             request.weights,
-            request.rebalance
+            request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories
         )
         
         # Calculate projected values using the portfolio service
@@ -419,6 +455,8 @@ async def projected_values_endpoint(request: ForecastStatisticRequest):
             periods_per_year=request.periods_per_year,
             aggregation=request.aggregation,
             rebalance=request.rebalance,
+            include_categories=request.include_categories,
+            exclude_categories=request.exclude_categories,
             initial_value=initial_value
         )
         

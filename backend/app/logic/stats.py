@@ -76,36 +76,17 @@ def annualised_volatility(period_returns: np.ndarray, periods_per_year: float = 
 def sharpe_ratio(period_returns: np.ndarray, risk_free_rate: float = 0.0, 
                  periods_per_year: float = 1.0, aggregation: str = "mean") -> float:
     """
-    Calculate Sharpe ratio: per-simulation (CAGR - RFR) / volatility, then aggregate.
-    
-    Args:
-        period_returns: Period returns array of shape (T, S) where T=time periods, S=simulations
-        risk_free_rate: Risk-free rate (default: 0.0)
-        periods_per_year: Number of periods per year (default: 1.0 for annual data)
-        aggregation: Aggregation method across simulations - "mean" or "median" (default: "mean")
-    
-    Returns:
-        Sharpe ratio as a float
+    Calculate Sharpe ratio using aggregated annualised return and volatility.
+    Sharpe = (Annualised Return - RFR) / Annualised Volatility
     """
-    T, S = period_returns.shape
-    
-    # Step 1: Calculate CAGR per simulation
-    cumulative_returns = (1 + period_returns).prod(axis=0)  # Shape: (S,)
-    years = T / periods_per_year
-    cagr_per_sim = cumulative_returns ** (1 / years) - 1  # Shape: (S,)
-    
-    # Step 2: Calculate volatility per simulation
-    vol_per_sim = np.std(period_returns, axis=0, ddof=1)  # Shape: (S,)
-    annualized_vol_per_sim = vol_per_sim * np.sqrt(periods_per_year)  # Shape: (S,)
-    
-    # Step 3: Calculate Sharpe ratio per simulation
-    sharpe_per_sim = (cagr_per_sim - risk_free_rate) / annualized_vol_per_sim  # Shape: (S,)
-    
-    # Step 4: Aggregate across simulations
-    if aggregation == "median":
-        return float(np.median(sharpe_per_sim))
-    else:  # default to mean
-        return float(np.mean(sharpe_per_sim))
+    ann_return = annualised_return(period_returns, periods_per_year=periods_per_year, aggregation=aggregation)
+    ann_vol = annualised_volatility(period_returns, periods_per_year=periods_per_year, aggregation=aggregation)
+    excess = ann_return - risk_free_rate
+    if ann_vol == 0:
+        if excess == 0:
+            return 0.0
+        return np.inf if excess > 0 else -np.inf
+    return float(excess / ann_vol)
 
 
 def tracking_error(portfolio_returns: np.ndarray, benchmark_returns: np.ndarray, 
@@ -359,15 +340,43 @@ def maximum_drawdown(period_returns: np.ndarray, aggregation: str = "mean") -> f
     # Step 2: Calculate rolling maximum (peak) for each simulation
     rolling_max = np.maximum.accumulate(cumulative_returns, axis=0)  # Shape: (T, S)
     
-    # Step 3: Calculate drawdowns: 1 - (current_value / peak_value)
-    # This gives us positive values for declines, 0 at peaks
-    drawdowns = 1 - (cumulative_returns / rolling_max)  # Shape: (T, S)
+    # Step 3: Calculate drawdowns: (current_value / peak_value) - 1
+    # This gives negative values for declines (conventional sign)
+    drawdowns = (cumulative_returns / rolling_max) - 1  # Shape: (T, S)
     
-    # Step 4: Find the maximum drawdown for each simulation (worst decline)
-    max_dd_per_sim = np.max(drawdowns, axis=0)  # Shape: (S,) - now positive values
+    # Step 4: Find the maximum drawdown (most negative) for each simulation
+    max_dd_per_sim = np.min(drawdowns, axis=0)  # Shape: (S,) - negative values or 0
     
     # Step 5: Aggregate across simulations
     if aggregation == "median":
         return float(np.median(max_dd_per_sim))
     else:  # default to mean
         return float(np.mean(max_dd_per_sim))
+
+
+def sortino_ratio(*args, **kwargs):
+    raise NotImplementedError("sortino_ratio is not part of the final submission")
+
+
+def information_ratio(*args, **kwargs):
+    raise NotImplementedError("information_ratio is not part of the final submission")
+
+
+def calmar_ratio(period_returns: np.ndarray,
+                 risk_free_rate: float = 0.0,
+                 periods_per_year: float = 1.0,
+                 aggregation: str = "mean") -> float:
+    """
+    Calculate Calmar ratio: (Annualised Return - RFR) / Maximum Drawdown Magnitude.
+    Uses positive magnitude of maximum drawdown.
+    """
+    ann_return = annualised_return(period_returns, periods_per_year=periods_per_year, aggregation=aggregation)
+    max_dd = maximum_drawdown(period_returns, aggregation=aggregation)  # negative or 0
+
+    denom = abs(max_dd)
+    excess = ann_return - risk_free_rate
+    if denom == 0:
+        if excess == 0:
+            return 0.0
+        return np.inf if excess > 0 else -np.inf
+    return float(excess / denom)

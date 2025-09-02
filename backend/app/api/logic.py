@@ -19,7 +19,9 @@ from app.logic.stats import (
 
 
 def build_portfolio_returns(weights: List[float], 
-                           rebalance: str = "periodic") -> Tuple[np.ndarray, int]:
+                           rebalance: str = "periodic",
+                           include_categories: Optional[List[str]] = None,
+                           exclude_categories: Optional[List[str]] = None) -> Tuple[np.ndarray, int]:
     """
     Build portfolio returns using the specified weights.
     
@@ -42,7 +44,35 @@ def build_portfolio_returns(weights: List[float],
     if not np.allclose(np.sum(weights_array), 1.0, atol=1e-6):
         raise ValueError(f"Weights must sum to 1.0, got {np.sum(weights_array):.6f}")
     
-    # Calculate portfolio returns using portfolio service with rebalancing
+    # Apply category filtering by masking assets
+    if include_categories or exclude_categories:
+        include_set = set(include_categories) if include_categories else None
+        exclude_set = set(exclude_categories) if exclude_categories else None
+        asset_mask = np.ones(len(asset_names), dtype=bool)
+        if include_set is not None:
+            asset_mask &= np.array([cat in include_set for cat in asset_categories])
+        if exclude_set is not None:
+            asset_mask &= np.array([cat not in exclude_set for cat in asset_categories])
+
+        if not np.any(asset_mask):
+            raise ValueError("No assets match the specified category filters")
+
+        # Slice weights to included assets only and renormalize
+        filtered_weights = weights_array[asset_mask]
+        total = filtered_weights.sum()
+        if total <= 0:
+            raise ValueError("Filtered weights sum to zero after category filtering")
+        filtered_weights = filtered_weights / total
+
+        # Filter returns to included assets only for performance
+        filtered_returns = returns[asset_mask, :, :]
+
+        from app.services.portfolio import portfolio_period_returns
+        portfolio_returns = portfolio_period_returns(filtered_weights, filtered_returns, rebalance)
+        n_assets_used = int(asset_mask.sum())
+        return portfolio_returns, n_assets_used
+
+    # Calculate portfolio returns using portfolio service with rebalancing (no filtering)
     from app.services.portfolio import portfolio_period_returns
     portfolio_returns = portfolio_period_returns(weights_array, returns, rebalance)
     
@@ -80,6 +110,8 @@ def get_calculation_params(weights: List[float],
                           aggregation: str = "mean",
                           var_type: str = "pooled",
                           rebalance: str = "periodic",
+                          include_categories: Optional[List[str]] = None,
+                          exclude_categories: Optional[List[str]] = None,
                           **kwargs) -> dict:
     """
     Get parameters used in calculation for response.
@@ -100,7 +132,9 @@ def get_calculation_params(weights: List[float],
         "periods_per_year": periods_per_year,
         "aggregation": aggregation,
         "rebalance": rebalance,
-        "var_type": var_type
+        "var_type": var_type,
+        "include_categories": include_categories,
+        "exclude_categories": exclude_categories
     }
     
     # Add additional parameters

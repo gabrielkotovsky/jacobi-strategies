@@ -2,18 +2,39 @@
 API schemas for forecast statistics endpoints.
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from typing import List, Optional, Dict, Any, Union
 import numpy as np
 
 class ForecastStatisticRequest(BaseModel):
     """Base request model for forecast statistics."""
     
-    weights: List[float] = Field(..., description="Portfolio weights (must sum to 1.0)")
+    weights: List[float] = Field(
+        ..., description="Portfolio weights (must sum to 1.0)", min_length=25, max_length=25
+    )
     periods_per_year: float = Field(1.0, description="Number of periods per year for annualization")
     aggregation: str = Field("mean", description="Aggregation method across simulations: 'mean' or 'median'")
     rebalance: str = Field("periodic", description="Rebalancing strategy: 'periodic' or 'none'")
     initial_value: Optional[float] = Field(100000.0, description="Initial portfolio value for projections")
+    include_categories: Optional[List[str]] = Field(None, description="Asset categories to include")
+    exclude_categories: Optional[List[str]] = Field(None, description="Asset categories to exclude")
+
+    # Improve OpenAPI example
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "weights": [0.04] * 25,
+                    "periods_per_year": 1.0,
+                    "aggregation": "mean",
+                    "rebalance": "periodic",
+                    "initial_value": 100000.0,
+                    "include_categories": ["Equity"],
+                    "exclude_categories": None
+                }
+            ]
+        }
+    )
     
     @validator('weights')
     def validate_weights(cls, v):
@@ -62,10 +83,47 @@ class ForecastStatisticRequest(BaseModel):
             raise ValueError("rebalance must be 'periodic' or 'none'")
         return v
 
+    @validator('include_categories', 'exclude_categories')
+    def validate_category_lists(cls, v):
+        if v is None:
+            return v
+        if not isinstance(v, list):
+            raise ValueError("category filters must be lists")
+        if len(v) == 0:
+            raise ValueError("category filter lists cannot be empty")
+        if not all(isinstance(x, str) for x in v):
+            raise ValueError("all category names must be strings")
+        return v
+
+    @validator('exclude_categories')
+    def validate_category_conflicts(cls, v, values):
+        if v is None:
+            return v
+        include = values.get('include_categories')
+        if include is not None and set(include) & set(v):
+            raise ValueError("Cannot have overlapping categories in include_categories and exclude_categories")
+        return v
+
 class RiskFreeRateRequest(ForecastStatisticRequest):
     """Request model for statistics requiring risk-free rate."""
     
     risk_free_rate: float = Field(0.0, description="Annual risk-free rate")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "weights": [0.04] * 25,
+                    "periods_per_year": 1.0,
+                    "aggregation": "mean",
+                    "rebalance": "periodic",
+                    "risk_free_rate": 0.02,
+                    "include_categories": None,
+                    "exclude_categories": None
+                }
+            ]
+        }
+    )
     
     @validator('risk_free_rate')
     def validate_risk_free_rate(cls, v):
@@ -78,6 +136,22 @@ class MinimumAcceptableReturnRequest(ForecastStatisticRequest):
     """Request model for statistics requiring minimum acceptable return."""
     
     minimum_acceptable_return: float = Field(0.0, description="Minimum acceptable return threshold")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "weights": [0.04] * 25,
+                    "periods_per_year": 1.0,
+                    "aggregation": "mean",
+                    "rebalance": "periodic",
+                    "minimum_acceptable_return": 0.0,
+                    "include_categories": None,
+                    "exclude_categories": None
+                }
+            ]
+        }
+    )
     
     @validator('minimum_acceptable_return')
     def validate_minimum_acceptable_return(cls, v):
@@ -91,6 +165,23 @@ class ConfidenceRequest(ForecastStatisticRequest):
     
     confidence: float = Field(0.95, description="Confidence level (0 < confidence < 1)")
     var_type: str = Field("pooled", description="VaR calculation method: 'pooled', 'year_by_year', or 'cumulative'")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "weights": [0.04] * 25,
+                    "periods_per_year": 1.0,
+                    "aggregation": "mean",
+                    "rebalance": "periodic",
+                    "confidence": 0.95,
+                    "var_type": "pooled",
+                    "include_categories": None,
+                    "exclude_categories": None
+                }
+            ]
+        }
+    )
     
     @validator('confidence')
     def validate_confidence(cls, v):
@@ -102,11 +193,27 @@ class ConfidenceRequest(ForecastStatisticRequest):
 class AssetMetricsRequest(BaseModel):
     """Request model for asset-level metrics calculation."""
     
-    weights: List[float] = Field(..., description="Portfolio weights (must sum to 1.0)")
+    weights: List[float] = Field(
+        ..., description="Portfolio weights (must sum to 1.0)", min_length=25, max_length=25
+    )
     periods_per_year: float = Field(1.0, description="Number of periods per year for annualization")
     is_log: bool = Field(False, description="Whether returns are log returns (True) or simple returns (False)")
     aggregation: str = Field("pooled", description="Aggregation method: 'pooled', 'year_by_year', or 'simulation_by_simulation'")
     corr_method: str = Field("pooled", description="Correlation method: 'pooled', 'year_by_year', or 'simulation_by_simulation'")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "weights": [0.04] * 25,
+                    "periods_per_year": 1.0,
+                    "is_log": False,
+                    "aggregation": "pooled",
+                    "corr_method": "pooled"
+                }
+            ]
+        }
+    )
     
     @validator('periods_per_year')
     def validate_periods_per_year(cls, v):
@@ -134,7 +241,9 @@ class AssetMetricsRequest(BaseModel):
 class TrackingErrorRequest(ForecastStatisticRequest):
     """Request model for tracking error calculation."""
     
-    benchmark_weights: List[float] = Field(..., description="Benchmark portfolio weights")
+    benchmark_weights: List[float] = Field(
+        ..., description="Benchmark portfolio weights", min_length=25, max_length=25
+    )
     
     @validator('benchmark_weights')
     def validate_benchmark_weights(cls, v):
@@ -171,8 +280,8 @@ class ForecastStatisticResponse(BaseModel):
     simulations: int = Field(10000, description="Number of Monte Carlo simulations")
     aggregation: str = Field("mean_across_simulations", description="Aggregation method used")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "value": 0.0685,
                 "method": "Compound Annual Growth Rate (CAGR)",
@@ -187,3 +296,4 @@ class ForecastStatisticResponse(BaseModel):
                 "simulations": 10000
             }
         }
+    )

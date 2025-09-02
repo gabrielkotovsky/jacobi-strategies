@@ -15,8 +15,6 @@ from app.logic.stats import (
     value_at_risk,
     conditional_value_at_risk,
     maximum_drawdown,
-    sortino_ratio,
-    information_ratio,
     calmar_ratio
 )
 
@@ -323,70 +321,10 @@ class TestMaximumDrawdown:
         assert result < 0.0  # Should have drawdowns
 
 
-class TestSortinoRatio:
-    """Test sortino_ratio function."""
-    
-    def test_basic_calculation(self):
-        """Test basic Sortino ratio calculation."""
-        returns = np.array([[0.1, 0.2], [0.05, -0.1], [0.15, 0.0]])  # Shape: (3, 2)
-        rfr = 0.02
-        mar = 0.0
-        
-        result = sortino_ratio(returns, rfr, mar, periods_per_year=1.0)
-        
-        # Manual calculation:
-        # Annual return: ~0.0570
-        # Downside deviation: ~0.0289 (actual calculated value)
-        # Sortino = (0.0570 - 0.02) / 0.0289 = 1.476
-        expected = 1.476
-        
-        assert abs(result - expected) < 0.01
-    
-    def test_zero_downside_deviation(self):
-        """Test with zero downside deviation."""
-        returns = np.array([[0.1, 0.2], [0.05, 0.15]])  # Shape: (2, 2)
-        rfr = 0.02
-        
-        result = sortino_ratio(returns, rfr, 0.0)
-        
-        # If return equals RFR, should return 0.0
-        # If return > RFR, should return inf
-        # If return < RFR, should return -inf
-        # In this case, return = 0.1 > RFR = 0.02, so should return inf
-        assert result == np.inf
+# Removed Sortino ratio tests (metric not included in final submission)
 
 
-class TestInformationRatio:
-    """Test information_ratio function."""
-    
-    def test_basic_calculation(self):
-        """Test basic information ratio calculation."""
-        portfolio = np.array([[0.1, 0.2], [0.05, -0.1]])  # Shape: (2, 2)
-        benchmark = np.array([[0.08, 0.15], [0.03, -0.08]])  # Shape: (2, 2)
-        
-        result = information_ratio(portfolio, benchmark, periods_per_year=1.0)
-        
-        # Manual calculation:
-        # Portfolio CAGR: 0.0570
-        # Benchmark CAGR: 0.0416 (actual calculated value)
-        # Excess return: 0.0570 - 0.0416 = 0.0154
-        # Tracking error: 0.0247
-        # Information ratio = 0.0154 / 0.0247 = 0.619
-        expected = 0.619  # Actual calculated value
-        
-        assert abs(result - expected) < 0.01
-    
-    def test_zero_tracking_error(self):
-        """Test with zero tracking error."""
-        portfolio = np.array([[0.1, 0.2], [0.05, -0.1]])  # Shape: (2, 2)
-        benchmark = np.array([[0.1, 0.2], [0.05, -0.1]])  # Shape: (2, 2)
-        
-        result = information_ratio(portfolio, benchmark)
-        
-        # If excess return equals 0, should return 0.0
-        # If excess return > 0, should return inf
-        # If excess return < 0, should return -inf
-        assert result == 0.0  # In this case, excess return = 0
+# Removed Information ratio tests (metric not included in final submission)
 
 
 class TestCalmarRatio:

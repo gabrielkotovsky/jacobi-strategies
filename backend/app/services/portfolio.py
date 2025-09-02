@@ -24,6 +24,12 @@ def portfolio_period_returns(weights: np.ndarray, returns: np.ndarray,
         - For rebalance="none": applies weights only at t=0 and allows drift
         - For rebalance="periodic": applies weights each period (standard approach)
     """
+    # Promote precision for numeric stability
+    if returns.dtype != np.float32 and returns.dtype != np.float64:
+        returns = returns.astype(np.float32, copy=False)
+    if weights.dtype != np.float32 and weights.dtype != np.float64:
+        weights = weights.astype(np.float32, copy=False)
+
     if weights.shape[0] != returns.shape[0]:
         raise ValueError(f"Weights shape {weights.shape} doesn't match returns assets dimension {returns.shape[0]}")
     
@@ -64,37 +70,27 @@ def _calculate_buy_and_hold_returns(weights: np.ndarray, returns: np.ndarray) ->
     # Initialize portfolio returns array
     portfolio_returns = np.zeros((T, S))
     
-    # Start with initial weights
-    current_weights = weights.copy()  # Shape: (A,)
+    # Start with initial weights per simulation (replicate across S)
+    # Shape: (A, S)
+    current_weights = np.repeat(weights.reshape(-1, 1), S, axis=1).astype(returns.dtype, copy=False)
     
     # Calculate portfolio return for each period
     for t in range(T):
         # Get asset returns for this period
         period_returns = returns[:, t, :]  # Shape: (A, S)
         
-        # Calculate portfolio return using current weights
-        # einsum('a,as->s', current_weights, period_returns)
-        portfolio_returns[t, :] = np.einsum('a,as->s', current_weights, period_returns)
+        # Calculate portfolio return using current weights per simulation
+        # einsum('as,as->s', current_weights, period_returns)
+        portfolio_returns[t, :] = np.einsum('as,as->s', current_weights, period_returns)
         
         # Update weights for next period (if not the last period)
         if t < T - 1:
-            # Calculate cumulative returns up to this point for weight updating
-            # We need to track the cumulative performance of each asset
-            cumulative_asset_returns = (1 + returns[:, :t+1, :]).prod(axis=1)  # Shape: (A, S)
-            
-            # Update weights based on relative performance
-            # New weight = (old_weight * cumulative_return) / sum(all_weights * cumulative_returns)
-            weighted_cumulative = current_weights[:, np.newaxis] * cumulative_asset_returns  # Shape: (A, S)
-            weight_sums = weighted_cumulative.sum(axis=0)  # Shape: (S,)
-            
-            # Avoid division by zero
-            weight_sums = np.where(weight_sums == 0, 1.0, weight_sums)
-            
-            # Update weights for next period
-            current_weights = (weighted_cumulative / weight_sums).mean(axis=1)  # Shape: (A,)
-            
-            # Normalize weights to sum to 1.0
-            current_weights = current_weights / current_weights.sum()
+            # Update weights pathwise: w_{t+1,s} ∝ w_{t,s} * (1 + r_{a,t,s})
+            current_weights = current_weights * (1.0 + period_returns)
+            # Normalize weights per simulation to sum to 1
+            sums = current_weights.sum(axis=0, keepdims=True)
+            sums = np.where(sums == 0, 1.0, sums)
+            current_weights = current_weights / sums
     
     return portfolio_returns
 

@@ -1,70 +1,166 @@
-# Investment Engineer Technical Test
+# Portfolio Analysis API & Dashboard
 
-This two-part technical assessment is designed to evaluate your Python programming and problem-solving skills. In this test, you will:
+## Quick Start
 
-1. Build a local API that computes portfolio statistics using simulated asset-class projections.
-2. Build a lightweight dashboard that allows a user to construct a portfolio and view its performance and risk metrics.
+1) Prerequisites
+- Python 3.10+ with venv
+- Node 18+
 
-Use Python for the backend (Flask or FastAPI) and React or Plotly Dash for the frontend. Submit your project as a zipped folder. 
+2) Using Makefile (recommended)
+```bash
+# From the project root
+make install-backend
+make install-frontend
+make preflight
+make backend    # starts FastAPI on 127.0.0.1:8000
+make frontend   # starts CRA dev server on :3000
+make test       # runs backend tests
+```
+Backend: http://localhost:8000 (Swagger at /docs)
+Frontend: http://localhost:3000
+Preflight checks data files under `data/`, venv presence, and port 8000 availability.
 
-We value clean design and well-considered implementation choices. Rather than aiming for a perfect solution, we’re more interested in how you approach problems, make decisions, and balance trade-offs. Practical, thoughtful solutions are encouraged. While the core requirements are clearly defined, we encourage you to go above and beyond where you see opportunities to improve usability, robustness, or clarity. Thoughtful enhancements in design, documentation, testing, user experience, and the depth and presentation of calculated metrics will be recognised and appreciated.
+3) Backend (FastAPI)
+```bash
+# From the project root directory
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+API runs on http://localhost:8000 (Swagger UI at /docs)
+
+**Note**: Use `python3 -m uvicorn app.main:app --reload` instead of `python -m app.main` for proper FastAPI server startup.
+
+4) Frontend (React)
+```bash
+# From the project frontend directory (jacobi-strategies/frontend)
+cd frontend
+npm install
+npm start
+```
+App runs on http://localhost:3000 with proxy to the API.
+
+5) Tests
+```bash
+# From the project backend directory (jacobi-strategies/backenc)
+cd backend
+pytest -q
+```
+
+## Project Structure
+```
+backend/         FastAPI app, data loader, stats logic, tests
+frontend/        React dashboard (CRA) with Recharts
+data/            base_simulation.hdf5, asset_categories.csv
+```
 
 ## Data
-You will use two simple inputs located in `Data/`:
-- `base_simulation.hdf5` — a simulation file in HDF5 format containing
-  - `asset_names`: a list of asset names. The order of entries in this list corresponds directly to the order of the assets dimension in the simulation array.
-  - `asset_class_projections/simulated_return` array of shape `(assets, years, paths)`.
-- `asset_categories.csv` — the asset groupings
-  - Columns: `asset_name,category`. Use this to build grouped allocation charts.
+- base_simulation.hdf5: contains `asset_names` and `asset_class_projections/simulated_return` with shape (25 assets, 20 years, 10,000 simulations)
+- asset_categories.csv: columns `asset_name,category`
 
-## Part 1 — Forecast Statistics API 
-Implement API endpoints to calculate forecast portfolio statistics. Each endpoint should support user-defined portfolio allocations, and any additional parameters relevant to that specific endpoint. While batch handling of portfolios is encouraged for flexibility, it is not a strict requirement. You are free to design the input and output schema as you see fit.
+Place both files under the repository `data/` directory.
 
-Endpoints
-- POST `/forecast_statistic/annualised_return`
-- POST `/forecast_statistic/annualised_volatility`
-- POST `/forecast_statistic/sharpe_ratio`
-- POST `/forecast_statistic/tracking_error`
-- POST `/forecast_statistic/downside_deviation`
-- POST `/forecast_statistic/value_at_risk`
-- POST `/forecast_statistic/conditional_value_at_risk`
-- POST `/forecast_statistic/maximum_drawdown`
+## API Overview
+Base: http://localhost:8000
+- GET `/`               API info
+- GET `/health`         Health check
+- GET `/docs`           Swagger UI
 
+Forecast statistics (POST `/forecast_statistic/...`):
+- `annualised_return`
+- `annualised_volatility`
+- `sharpe_ratio`
+- `tracking_error`
+- `downside_deviation`
+- `value_at_risk`
+- `conditional_value_at_risk`
+- `maximum_drawdown`
 
-Error handling
-- Validate inputs and provide clear, actionable messages.
+Additional endpoints:
+- GET `/forecast_statistic/assets`
+- POST `/forecast_statistic/projected_values`
+- POST `/forecast_statistic/asset_metrics`
 
-## Part 2 — Dashboard
-Build a lightweight dashboard (React or Plotly Dash) that integrates with your API.
+Request (example):
+```json
+{
+  "weights": [0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04],
+  "periods_per_year": 1.0,
+  "aggregation": "mean",
+  "rebalance": "periodic",
+  "initial_value": 100000.0,
+  "include_categories": ["Equity"],
+  "exclude_categories": null
+}
+```
 
-Must include
-- Portfolio inputs:
-  - Grid/table to input allocations (one row per asset with weight input), with functionality to add or remove assets, and display real-time total allocation.
-  - Text box to input the starting portfolio value.
+Notes:
+- `weights` must have 25 items and sum to 1.0
+- `include_categories`/`exclude_categories` are optional and cannot overlap
+- `maximum_drawdown` returns a positive magnitude (e.g., 0.23 for 23%)
 
-- Allocation charts:
-  - Pie chart showing allocations by individual asset.
-  - Bar chart showing allocations grouped by asset category (from asset_categories.csv).
+## Financial Assumptions
+- Returns in the HDF5 are annual simple returns; annualisation uses standard factors (mean unchanged, volatility × √periods_per_year).
+- Sharpe ratio uses CAGR per simulation minus an annual risk-free rate, divided by annualised volatility; aggregation across simulations uses mean or median.
+- VaR/CVaR are computed on simulated return distributions:
+  - pooled: quantile of all T×S 1-period returns; CVaR is mean of the loss tail.
+  - cumulative: quantile of terminal multi-period cumulative return; CVaR is mean of the loss tail.
+- Maximum drawdown is reported as positive magnitude of peak-to-trough decline per simulation, then aggregated.
+- Weights are long-only, non-negative, and must sum to 1.0; when category filters are applied, excluded assets are dropped and the remaining weights are renormalised.
+- Rebalancing:
+  - periodic: apply weights each period
+  - none: buy-and-hold with drifting weights
+- Risk-free rate is an annual rate and applied consistently with annualisation.
+- Correlations can be computed pooled (all observations), year-by-year, or simulation-by-simulation with Fisher z-averaging for stability.
 
-- Projected portfolio value chart that displays projected portfolio values across years at key percentiles (e.g., 1st, 5th, 25th, 50th, 75th, 95th, 99th).
+Notes and conventions:
+- Dataset periodicity is annual; using periods_per_year ≠ 1 is a modeling assumption for scaling, not a change in data frequency.
+- VaR and CVaR are reported as negative returns (loss thresholds). The API may present magnitudes for certain metrics (e.g., maximum drawdown) for readability; the underlying functions use conventional signs.
 
-- Portfolio metrics table that displays the following performance and risk measures:
-  - Annualised volatility
-  - Annualised downside deviation
-  - 5% Value at Risk (VaR) 
-  - 5% Conditional Value at Risk (CVaR)
-  - Maximum drawdown
+## Frontend Overview
+Features:
+- Allocation editor with selection and total validation
+- Charts: individual asset pie, projected values with percentiles
+- Metrics: volatility, downside deviation, VaR, CVaR, maximum drawdown
+- Asset metrics and correlation matrix
 
-- Asset metrics tables to support additional analysis:
-  - Annualised return and volatility per asset 
-  - Asset return correlation matrix
+Configuration:
+- API calls use relative URLs and CRA proxy (`frontend/package.json`)
 
-## Deliverable
-- A zip file containing both backend and frontend source code, along with clear local setup and run instructions. Your submission must include unit tests for key components. This helps us assess how you approach reliability and maintainability. Tests should be easy to run and demonstrate coverage of core functionality and edge cases.
+## Development Notes
+- Backend resolves data paths at startup; ensure `data/` exists and contains the files listed above.
+- CORS is permissive for development; restrict appropriately for production.
 
-## Assumptions
-- You are encouraged to make any reasonable assumptions necessary to complete the task. Please document them clearly where relevant.
+## Troubleshooting
 
-## Use of AI tools 
-- The use of AI tools is permitted during this assessment. However, please ensure that all submitted work reflects your own understanding and decision-making.
+### Backend Issues
+- **Port already in use**: If you get "Address already in use" error, the backend might already be running. Check if port 8000 is occupied.
+- **Virtual environment**: Ensure you're in the correct directory and have activated the virtual environment: `source .venv/bin/activate`
+- **Python version**: Use `python3` explicitly if you have multiple Python versions installed
+
+### Frontend Issues
+- **API connection**: Ensure the backend is running on port 8000 before starting the frontend
+- **Proxy errors**: The frontend uses a proxy to the backend API. Check that both services are running on their respective ports.
+
+### Common Commands
+```bash
+# Check if backend is running
+curl http://localhost:8000/health
+
+# Kill process on port 8000 (if needed)
+lsof -ti:8000 | xargs kill -9
+
+# Restart backend (from project root)
+cd backend && python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Check frontend status (from project root)
+cd frontend && npm run build
+```
+
+## Packaging
+- When zipping for submission, exclude `node_modules` and build artifacts. Include: this README, `backend/`, `frontend/`, and `data/`.
+
+## License
+For assessment use only.
 

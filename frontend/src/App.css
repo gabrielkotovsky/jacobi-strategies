@@ -122,6 +122,17 @@
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
+/* Remove spinner arrows from number inputs */
+.portfolio-input[type="number"]::-webkit-outer-spin-button,
+.portfolio-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.portfolio-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 /* Input Error Styling */
 .input-error {
   border-color: #e74c3c !important;
@@ -555,9 +566,9 @@ select.portfolio-input {
 
 .tab.active {
   background: white;
-  color: #667eea;
+  color: #4ddbd7;
   font-weight: 600;
-  border-bottom: 3px solid #667eea;
+  border-bottom: 3px solid #4ddbd7;
 }
 
 .tab-content {
@@ -591,22 +602,29 @@ select.portfolio-input {
   margin-bottom: 1.5rem;
 }
 
-/* Allocation Charts - Stacked Vertically */
+/* Allocation Charts - Side by Side */
 .allocation-charts {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  height: calc(100vh - 300px);
+  min-height: 600px;
 }
 
 .chart-container {
   background: white;
   border-radius: 8px;
-  padding: 1rem;
+  padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   height: 100%;
   display: flex;
   flex-direction: column;
+  min-height: 500px;
+}
+
+.chart-container .recharts-wrapper {
+  flex: 1;
+  min-height: 0;
 }
 
 .chart-container h3 {
@@ -664,10 +682,17 @@ select.portfolio-input {
 .metrics-section h3,
 .asset-metrics-section h3,
 .correlation-section h3 {
-  margin: 0 0 1rem 0;
+  margin: 0 0 0.5rem 0;
   color: #333;
   font-size: 1.1rem;
   font-weight: 600;
+}
+
+.matrix-subtitle {
+  margin: 0 0 1rem 0;
+  color: #666;
+  font-size: 0.9rem;
+  font-style: italic;
 }
 
 .metrics-row {
@@ -705,216 +730,165 @@ select.portfolio-input {
   background: #f8f9fa;
 }
 
-/* Correlation Heatmap */
-.correlation-heatmap {
+/* Correlation Matrix */
+.correlation-matrix {
   background: white;
   border-radius: 8px;
   padding: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.correlation-heatmap h4 {
-  margin: 0 0 0.5rem 0;
-  color: #333;
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-
-
-.heatmap-container {
   overflow-x: auto;
-  border-radius: 6px;
+}
+
+.correlation-matrix table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: inherit;
+  min-width: 600px;
+  table-layout: auto;
+}
+
+.correlation-matrix th,
+.correlation-matrix td {
+  padding: var(--dynamic-padding, 0.75rem);
+  text-align: center;
   border: 1px solid #e1e5e9;
 }
 
-.heatmap-grid {
-  display: grid;
-  min-width: 500px;
-  background: white;
-}
-
-.heatmap-header {
-  display: grid;
-  grid-template-columns: 120px repeat(auto-fit, minmax(60px, 1fr));
-  background: white;
-}
-
-.heatmap-corner {
+.correlation-matrix th {
   background: #f8f9fa;
-  border-right: 1px solid #e1e5e9;
-  border-bottom: 1px solid #e1e5e9;
-  min-height: 40px;
-}
-
-.heatmap-header-cell {
-  background: #f8f9fa;
-  padding: 0.5rem 0.25rem;
-  text-align: center;
   font-weight: 600;
   color: #333;
-  font-size: 0.75rem;
-  border-right: 1px solid #e1e5e9;
-  border-bottom: 1px solid #e1e5e9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 60px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
   writing-mode: vertical-rl;
   text-orientation: mixed;
   transform: rotate(180deg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.2;
-  max-width: 100%;
+  min-height: 80px;
+  max-height: 120px;
 }
 
-.heatmap-row {
-  display: grid;
-  grid-template-columns: 120px repeat(auto-fit, minmax(60px, 1fr));
-  background: white;
-}
-
-.heatmap-row-header {
+.correlation-matrix th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 20;
   background: #f8f9fa;
-  padding: 0.75rem 0.5rem;
-  text-align: center;
-  font-weight: 600;
-  color: #333;
-  font-size: 0.8rem;
-  border-right: 1px solid #e1e5e9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  word-break: break-word;
+  writing-mode: horizontal-tb;
+  transform: none;
+  min-height: 80px;
+  max-height: 120px;
 }
 
-.heatmap-cell {
-  padding: 0.75rem 0.5rem;
-  text-align: center;
+.correlation-matrix td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background: white;
+  font-weight: 600;
+}
+
+.correlation-cell {
   font-weight: 500;
-  font-size: 0.75rem;
-  border-right: 1px solid #e1e5e9;
-  border-bottom: 1px solid #e1e5e9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  transition: all 0.2s ease;
-  cursor: pointer;
-  position: relative;
-}
-
-.heatmap-cell:hover {
-  transform: scale(1.05);
-  z-index: 10;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.heatmap-cell.high-positive {
-  background: linear-gradient(135deg, rgba(220, 53, 69, 0.9), rgba(220, 53, 69, 0.7));
-  color: white;
-  font-weight: 600;
-}
-
-.heatmap-cell.positive {
-  background: linear-gradient(135deg, rgba(220, 53, 69, 0.6), rgba(220, 53, 69, 0.3));
-  color: #721c24;
-}
-
-.heatmap-cell.neutral {
-  background: linear-gradient(135deg, rgba(108, 117, 125, 0.3), rgba(108, 117, 125, 0.1));
-  color: #495057;
-}
-
-.heatmap-cell.negative {
-  background: linear-gradient(135deg, rgba(40, 167, 69, 0.6), rgba(40, 167, 69, 0.3));
-  color: #155724;
-}
-
-.heatmap-cell.high-negative {
-  background: linear-gradient(135deg, rgba(40, 167, 69, 0.9), rgba(40, 167, 69, 0.7));
-  color: white;
-  font-weight: 600;
-}
-
-/* Custom tooltip styles */
-.heatmap-cell::before {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 500;
+  transition: background-color 0.2s ease;
   white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  transition: all 0.2s ease;
-  z-index: 1000;
-  pointer-events: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.heatmap-cell::after {
-  content: '';
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: rgba(0, 0, 0, 0.9);
-  opacity: 0;
-  visibility: hidden;
-  transition: all 0.2s ease;
-  z-index: 1000;
-  pointer-events: none;
+.correlation-cell.high-positive {
+  background: #dc2626;
+  color: white;
 }
 
-.heatmap-cell:hover::before,
-.heatmap-cell:hover::after {
-  opacity: 1;
-  visibility: visible;
-  bottom: calc(100% + 5px);
+.correlation-cell.very-positive {
+  background: #ef4444;
+  color: white;
+}
+
+.correlation-cell.positive {
+  background: #f87171;
+  color: white;
+}
+
+.correlation-cell.low-positive {
+  background: #fca5a5;
+  color: #991b1b;
+}
+
+.correlation-cell.very-low-positive {
+  background: #fecaca;
+  color: #7f1d1d;
+}
+
+.correlation-cell.neutral {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.correlation-cell.very-low-negative {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.correlation-cell.low-negative {
+  background: #bbf7d0;
+  color: #15803d;
+}
+
+.correlation-cell.negative {
+  background: #86efac;
+  color: #166534;
+}
+
+.correlation-cell.very-negative {
+  background: #4ade80;
+  color: white;
+}
+
+.correlation-cell.high-negative {
+  background: #22c55e;
+  color: white;
+}
+
+.correlation-cell.empty {
+  background: #f8f9fa;
+  border: 1px solid #e1e5e9;
+  color: transparent;
+  cursor: default;
 }
 
 /* Responsive adjustments for smaller screens */
 @media (max-width: 1024px) {
-  .heatmap-grid {
-    min-width: 450px;
+  /* Stack allocation charts vertically on smaller screens */
+  .allocation-charts {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    height: auto;
+    min-height: 400px;
   }
   
-  .heatmap-header,
-  .heatmap-row {
-    grid-template-columns: 100px repeat(auto-fit, minmax(55px, 1fr));
+  /* Responsive correlation matrix */
+  .correlation-matrix table {
+    min-width: 500px;
+    font-size: 0.8rem;
   }
   
-  .heatmap-header-cell {
-    font-size: 0.7rem;
-    padding: 0.4rem 0.2rem;
-    min-height: 55px;
+  .correlation-matrix th,
+  .correlation-matrix td {
+    padding: 0.6rem;
   }
   
-  .heatmap-row-header {
-    font-size: 0.75rem;
-    padding: 0.6rem 0.4rem;
+  .correlation-matrix th {
+    min-height: 70px;
+    max-height: 100px;
   }
   
-  .heatmap-cell {
-    font-size: 0.7rem;
-    padding: 0.6rem 0.4rem;
-  }
-  
-  /* Adjust tooltip for smaller screens */
-  .heatmap-cell::before {
-    font-size: 0.7rem;
-    padding: 0.4rem 0.6rem;
+  .correlation-matrix th:first-child {
+    min-height: 70px;
+    max-height: 100px;
   }
 }
 
@@ -1172,38 +1146,38 @@ select.portfolio-input {
     margin-top: 1rem;
   }
   
-  .heatmap-container {
-    min-width: 350px;
+  /* Mobile allocation charts */
+  .allocation-charts {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    height: auto;
+    min-height: 350px;
   }
   
-  .heatmap-header,
-  .heatmap-row {
-    grid-template-columns: 80px repeat(auto-fit, minmax(50px, 1fr));
+  .chart-container {
+    padding: 1rem;
+    min-height: 350px;
   }
   
-  .heatmap-header-cell {
-    font-size: 0.65rem;
-    padding: 0.3rem 0.15rem;
-    min-height: 50px;
+  /* Mobile correlation matrix */
+  .correlation-matrix table {
+    min-width: 400px;
+    font-size: 0.75rem;
   }
   
-  .heatmap-row-header {
-    font-size: 0.7rem;
-    padding: 0.5rem 0.25rem;
+  .correlation-matrix th,
+  .correlation-matrix td {
+    padding: 0.5rem;
   }
   
-  .heatmap-cell {
-    font-size: 0.65rem;
-    padding: 0.5rem 0.25rem;
+  .correlation-matrix th {
+    min-height: 60px;
+    max-height: 80px;
   }
   
-  /* Adjust tooltip for mobile */
-  .heatmap-cell::before {
-    font-size: 0.65rem;
-    padding: 0.3rem 0.5rem;
-    max-width: 200px;
-    white-space: normal;
-    text-align: center;
+  .correlation-matrix th:first-child {
+    min-height: 60px;
+    max-height: 80px;
   }
 }
 

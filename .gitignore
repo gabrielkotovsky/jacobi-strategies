@@ -320,18 +320,6 @@ jspm_packages/
 ehthumbs.db
 Thumbs.db
 
-# Project specific
-*.hdf5
-*.h5
-data/*.hdf5
-data/*.h5
-
-# Keep data folder structure but ignore large files
-data/
-!data/*.csv
-!data/*.txt
-!data/*.md
-
 # Generated files
 *.png
 *.jpg

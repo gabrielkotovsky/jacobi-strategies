@@ -58,6 +58,30 @@ class TestPortfolioPeriodReturns:
         # The returns should be different (though they might be similar for small datasets)
         # At minimum, they should have the same shape
         assert periodic_returns.shape == portfolio_returns.shape
+        # Explicit check: for this dataset they should differ in at least one element
+        assert not np.allclose(periodic_returns, portfolio_returns)
+
+    def test_buy_and_hold_pathwise_wealth(self):
+        """Buy-and-hold returns should match pathwise wealth-based computation per simulation."""
+        # Compute via service
+        bh_returns = portfolio_period_returns(self.weights, self.returns, rebalance="none")  # (T,S)
+        # Wealth path per simulation: V_t = prod_{u<=t} (1 + r_{p,u,s})
+        wealth_from_returns = (1 + bh_returns).cumprod(axis=0)
+
+        # Manual pathwise wealth using drifting weights per simulation
+        A, T, S = self.returns.shape
+        w = np.repeat(self.weights.reshape(-1, 1), S, axis=1)
+        wealth_manual = np.ones((T, S))
+        for t in range(T):
+            rt = (w * self.returns[:, t, :]).sum(axis=0)
+            wealth_manual[t, :] = (1.0 + rt) if t == 0 else wealth_manual[t-1, :] * (1.0 + rt)
+            if t < T - 1:
+                w = w * (1.0 + self.returns[:, t, :])
+                sums = w.sum(axis=0, keepdims=True)
+                sums = np.where(sums == 0, 1.0, sums)
+                w = w / sums
+
+        np.testing.assert_allclose(wealth_from_returns, wealth_manual, atol=1e-10)
     
     def test_invalid_rebalance_strategy(self):
         """Test invalid rebalancing strategy raises error."""

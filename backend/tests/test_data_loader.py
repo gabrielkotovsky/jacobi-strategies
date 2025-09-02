@@ -35,7 +35,8 @@ class TestDataLoader:
         # Test returns array
         assert isinstance(returns, np.ndarray), "Returns should be numpy array"
         assert returns.shape == (25, 20, 10000), f"Expected shape (25, 20, 10000), got {returns.shape}"
-        assert returns.dtype == np.float16, f"Expected float16 dtype, got {returns.dtype}"
+        # Returns are promoted to float32 for numerical stability
+        assert returns.dtype in (np.float16, np.float32), f"Expected float16 or float32 dtype, got {returns.dtype}"
         
         # Test asset names
         assert isinstance(asset_names, list), "Asset names should be list"
