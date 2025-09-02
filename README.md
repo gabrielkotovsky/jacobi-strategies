@@ -8,14 +8,20 @@
 
 2) Using Makefile (recommended)
 ```bash
-# From the project root
+# From the project root, one command to install deps and start both servers
+make            # same as `make dev`
+
+# Optional helpers
+make preflight  # checks data files, port 8000, venv
+make test       # runs backend tests
+
+# Individual targets (if you want to run parts manually)
 make install-backend
 make install-frontend
-make preflight
 make backend    # starts FastAPI on 127.0.0.1:8000
 make frontend   # starts CRA dev server on :3000
-make test       # runs backend tests
 ```
+`make` is the default and is equivalent to `make dev`.
 Backend: http://localhost:8000 (Swagger at /docs)
 Frontend: http://localhost:3000
 Preflight checks data files under `data/`, venv presence, and port 8000 availability.
