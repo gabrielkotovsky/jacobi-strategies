@@ -34,7 +34,7 @@ API runs on http://localhost:8000 (Swagger UI at /docs)
 
 4) Frontend (React)
 ```bash
-# From the project frontend directory (jacobi-strategies/frontend)
+# From the project root directory (jacobi-strategies/frontend)
 cd frontend
 npm install
 npm start
@@ -43,7 +43,7 @@ App runs on http://localhost:3000 with proxy to the API.
 
 5) Tests
 ```bash
-# From the project backend directory (jacobi-strategies/backenc)
+# From the project root directory (jacobi-strategies/backend)
 cd backend
 pytest -q
 ```
