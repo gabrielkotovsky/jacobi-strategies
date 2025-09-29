@@ -5,16 +5,6 @@ API logic helpers for portfolio construction and asset filtering.
 import numpy as np
 from typing import List, Tuple, Optional
 from app.data.loader import get_cached_data
-from app.logic.stats import (
-    annualised_return,
-    annualised_volatility,
-    sharpe_ratio,
-    tracking_error,
-    downside_deviation,
-    value_at_risk,
-    conditional_value_at_risk,
-    maximum_drawdown
-)
 
 def build_portfolio_returns(weights: List[float], 
                            rebalance: str = "periodic",
