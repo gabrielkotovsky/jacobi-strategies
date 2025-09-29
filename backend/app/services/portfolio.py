@@ -47,7 +47,6 @@ def portfolio_period_returns(weights: np.ndarray, returns: np.ndarray,
     
     return portfolio_returns
 
-
 def _calculate_buy_and_hold_returns(weights: np.ndarray, returns: np.ndarray) -> np.ndarray:
     """
     Calculate buy-and-hold portfolio returns where weights drift based on performance.
@@ -94,7 +93,6 @@ def _calculate_buy_and_hold_returns(weights: np.ndarray, returns: np.ndarray) ->
     
     return portfolio_returns
 
-
 def to_cumulative_returns(period_returns: np.ndarray) -> np.ndarray:
     """
     Convert period returns to cumulative returns.
@@ -111,7 +109,6 @@ def to_cumulative_returns(period_returns: np.ndarray) -> np.ndarray:
     # (1 + r).cumprod(axis=0) where axis=0 is the time dimension
     cumulative_returns = (1 + period_returns).cumprod(axis=0)
     return cumulative_returns
-
 
 def calculate_annualized_metrics(portfolio_returns: np.ndarray, 
                                periods_per_year: float = 1.0) -> Tuple[np.ndarray, np.ndarray]:
@@ -147,7 +144,6 @@ def calculate_annualized_metrics(portfolio_returns: np.ndarray,
         annualized_volatility = vol_period
     
     return annualized_mean, annualized_volatility
-
 
 def portfolio_analysis_pipeline(weights: np.ndarray, returns: np.ndarray,
                               rebalance: str = "periodic",
@@ -200,7 +196,6 @@ def portfolio_analysis_pipeline(weights: np.ndarray, returns: np.ndarray,
         }
     }
 
-
 def validate_portfolio_inputs(weights: np.ndarray, returns: np.ndarray) -> None:
     """
     Validate portfolio calculation inputs.
@@ -235,7 +230,6 @@ def validate_portfolio_inputs(weights: np.ndarray, returns: np.ndarray) -> None:
         raise ValueError("Returns contain NaN or infinite values")
     
     logger.info(f"Portfolio inputs validated: {weights.shape[0]} assets, {returns.shape[1]} periods, {returns.shape[2]} simulations")
-
 
 def calculate_projected_values(portfolio_returns: np.ndarray, 
                              initial_value: float = 100000.0,
@@ -299,7 +293,6 @@ def calculate_projected_values(portfolio_returns: np.ndarray,
         projected_values.append(year_data)
     
     return projected_values
-
 
 def calculate_asset_metrics(returns: np.ndarray, weights: np.ndarray,
                            periods_per_year: float = 1.0,
@@ -440,7 +433,6 @@ def calculate_asset_metrics(returns: np.ndarray, weights: np.ndarray,
         "asset_metrics": asset_returns,
         "correlation_matrix": correlation_matrix
     }
-
 
 def _fisher_average_correlations(corr_matrices: list) -> np.ndarray:
     """

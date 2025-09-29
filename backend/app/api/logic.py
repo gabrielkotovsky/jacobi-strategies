@@ -16,8 +16,6 @@ from app.logic.stats import (
     maximum_drawdown
 )
 
-
-
 def build_portfolio_returns(weights: List[float], 
                            rebalance: str = "periodic",
                            include_categories: Optional[List[str]] = None,
